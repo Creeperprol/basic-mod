@@ -76,7 +76,8 @@ test('the host hands a task to a worker and sees its result', async ($, on) => {
   await run($, 'host', '')
   expect(store.get('host')).toMatchObject({ id: 'aaaa1111-0000' })
   await run($, 'assign', 'other write the tests')
-  expect(sent).toHaveLength(1)
+  expect(sent).toHaveLength(2) // the task, then an auto-rename off the random default name
+  expect(String(sent[1].text)).toContain('[RENAME host=aaaa1111-0000]\nwrite-the-tests')
   const text = String(sent[0].text)
   expect(text).toContain('[TASK ')
   expect(text).toContain('host=aaaa1111-0000')
@@ -87,8 +88,7 @@ test('the host hands a task to a worker and sees its result', async ($, on) => {
     text: `[from session "other-bbbb"] [RESULT ${id} from="other-bbbb"]\n12 tests written`,
   } as any)
   const board = JSON.stringify(await run($, 'board', ''))
-  expect(board).toContain('✓')
-  expect(board).toContain('12 tests written')
+  expect(board).toContain('No tasks yet') // the finished task cleared itself
 })
 
 test('a worker takes a task only from the registered host', async ($, on) => {
@@ -124,7 +124,7 @@ test('typing in the pane box sends a task to the chosen worker', async ($, on) =
   } as any)
   await ui.select({ key: 'target', value: 'bbbb2222-0000' } as any)
   await ui.input({ key: 'prompt', text: 'say hello and report back' } as any)
-  expect(sent).toHaveLength(1)
+  expect(sent).toHaveLength(2)
   expect(String(sent[0].text)).toContain('say hello and report back')
   expect(store.get('host')).toMatchObject({ id: 'aaaa1111-0000' })
 })
@@ -177,7 +177,7 @@ test('a rename keeps out the message envelope that wraps it', async ($, on) => {
   expect(ran[0].args).toBe('help')
 })
 
-test('clearing the board drops finished tasks and keeps pending ones', async ($, on) => {
+test('a finished task clears itself from the board and pending ones stay', async ($, on) => {
   const sent: any[] = []
   const store = new Map<string, unknown>(Object.entries(OTHER_PEER))
   stand(on, sent, store)
@@ -188,8 +188,6 @@ test('clearing the board drops finished tasks and keeps pending ones', async ($,
   const id = /\[TASK (\S+) /.exec(String(sent[0].text))![1]
   await $.session.receive({ origin: { kind: 'peer' }, text: `[RESULT ${id} from="other-bbbb"]\nok` } as any)
 
-  const r = await run($, 'board', 'clear')
-  expect(JSON.stringify(r)).toContain('Cleared 1 finished task')
   const left = JSON.stringify(await run($, 'board', ''))
   expect(left).toContain('second job')
   expect(left).not.toContain('first job')

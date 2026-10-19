@@ -115,9 +115,15 @@ async function renameWorker($: any, who: Me, p: Peer, name: string): Promise<str
   return deliver($, who, p, `[RENAME host=${who.id}]\n${name}`)
 }
 
-// Drops finished tasks from the board; pending and failed ones stay.
-async function clearDone($: any) {
-  await update($, tasks, l => l.filter(t => t.status !== 'done'))
+// Empties the whole board (the pane's Clear board button).
+async function clearBoard($: any) {
+  await update($, tasks, () => [])
+  $.ui.invalidate('ui.render')
+}
+
+// Empties the message log (the pane's Clear messages button).
+async function clearLog($: any) {
+  await update($, log, () => [])
   $.ui.invalidate('ui.render')
 }
 
@@ -126,8 +132,13 @@ async function assign($: any, who: Me, p: Peer, text: string): Promise<string | 
   const id = `t${((await $.clock.now()) % 46656).toString(36)}${(await read($, tasks)).length}`
   const body = `[TASK ${id} host=${who.id} name="${who.name}"]\n${text}\n\nWhen you are finished, call the tool ${T_REPORT} with task_id "${id}" and a short result.`
   const failed = await deliver($, who, p, body)
+  // A worker still on its random default name is renamed after its first task.
+  if (!failed && /-[0-9a-f]{4}$/.test(p.name)) {
+    const short = cleanName(text).split(' ').slice(0, 3).join('-').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 20)
+    if (short) await renameWorker($, who, p, short)
+  }
   const t: Task = { id, toId: p.id, toName: p.name, text, status: failed ? 'failed' : 'sent', at: await $.clock.now() }
-  await update($, tasks, l => [...l, t].slice(-30))
+  await update($, tasks, l => [...l.filter(x => x.status !== 'failed' || t.at - x.at < 600000), t].slice(-30))
   $.ui.invalidate('ui.render')
   return failed
 }
@@ -263,7 +274,7 @@ export const register: Register = (on, options) => {
       ['link', 'Open the session link pane'],
       ['host', 'Make this session the host that hands out work: /host or /host off'],
       ['assign', 'Host: give a task to a session: /assign <name|all> <task>'],
-      ['board', 'Host: show the task board, or /board clear to drop finished tasks'],
+      ['board', 'Host: show the task board, or /board clear to empty the board and messages'],
       ['setname', 'Host: rename another session: /setname <session> <new name>'],
     ]) {
       try {
@@ -357,9 +368,9 @@ export const register: Register = (on, options) => {
   on('command.run', { command: 'board' }, async ($, e) => {
     if (e.args.trim() === 'clear') {
       const before = (await read($, tasks)).length
-      await clearDone($)
-      const after = (await read($, tasks)).length
-      return { text: `Cleared ${before - after} finished task${before - after === 1 ? '' : 's'}.` }
+      await clearBoard($)
+      await clearLog($)
+      return { text: `Cleared ${before} task${before === 1 ? '' : 's'} and the messages.` }
     }
     const list = await read($, tasks)
     if (list.length === 0) return { text: 'No tasks yet.' }
@@ -503,7 +514,7 @@ export const register: Register = (on, options) => {
           const id = result[1]
           const found = (await read($, tasks)).find(t => t.id === id)
           if (found) {
-            await update($, tasks, l => l.map(t => (t.id === id ? { ...t, status: 'done' as const, result: result[3].slice(0, 2000) } : t)))
+            await update($, tasks, l => l.filter(t => t.id !== id)) // finished tasks clear themselves; the result still lands in the log
             await remember($, { at: now, dir: 'in', who: `${result[2]} ✓ ${id}`, text: result[3].slice(0, 300) })
             $.ui.toast(`${result[2]} finished ${id}`)
           }
@@ -625,20 +636,13 @@ export const register: Register = (on, options) => {
           <Box flexDirection="column" marginBottom={1}>
             <Text bold>TASKS</Text>
             {board.length === 0 ? <Text dimColor>none yet · /assign name task</Text> : null}
-            {board.some(t => t.status === 'done') ? (
-              <Button key="clear" label="Clear done" onPress={() => clearDone($)} />
-            ) : null}
-            {board.slice(-6).map(t => (
-              <Box key={t.id} flexDirection="column">
-                <Text wrap="truncate">
-                  <Text color={t.status === 'done' ? 'green' : t.status === 'failed' ? 'red' : 'yellow'}>
-                    {t.status === 'done' ? '✓ ' : t.status === 'failed' ? '✗ ' : '… '}
-                  </Text>
-                  <Text bold>{t.toName} </Text>
-                  <Text dimColor>{t.text}</Text>
-                </Text>
-                {t.result ? <Text wrap="truncate" color="green">    ⇒ {t.result.replace(/\s+/g, ' ')}</Text> : null}
-              </Box>
+            {board.length ? <Button key="clear" label="Clear board" onPress={() => clearBoard($)} /> : null}
+            {board.slice(-4).map(t => (
+              <Text key={t.id} wrap="truncate">
+                <Text color={t.status === 'failed' ? 'red' : 'yellow'}>{t.status === 'failed' ? '✗ ' : '… '}</Text>
+                <Text bold>{t.toName.slice(0, 14)} </Text>
+                <Text dimColor>{t.text.slice(0, 28)}</Text>
+              </Text>
             ))}
           </Box>
         ) : waiting.length ? (
@@ -686,6 +690,7 @@ export const register: Register = (on, options) => {
         </Box>
 
         <Text bold>MESSAGES</Text>
+        {msgs.length ? <Button key="clear-msgs" label="Clear messages" onPress={() => clearLog($)} /> : null}
         {msgs.length === 0 ? <Text dimColor>nothing yet</Text> : null}
         {msgs.slice(-8).map((m, i) => (
           <Text key={`${m.at}-${i}`} wrap="truncate">
