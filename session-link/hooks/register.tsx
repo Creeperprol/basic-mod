@@ -658,7 +658,6 @@ export const register: Register = (on, options) => {
               <Text bold>{p.name}</Text>
               <Text dimColor> {ago(now - p.seen)}</Text>
             </Text>
-            <Text dimColor>  {base(p.cwd)}  /tell {p.name} …</Text>
           </Box>
         ))}
         <Text> </Text>
