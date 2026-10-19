@@ -654,15 +654,24 @@ export const register: Register = (on, options) => {
 
         <Text bold>OTHER SESSIONS</Text>
         {list.length === 0 ? <Text dimColor>none running</Text> : null}
-        {list.map(p => (
-          <Box key={p.id} flexDirection="column">
-            <Text>
-              <Text color="green">● </Text>
-              <Text bold>{p.name}</Text>
-              <Text dimColor> {ago(now - p.seen)}</Text>
-            </Text>
-          </Box>
-        ))}
+        {list.map(p => {
+          // Only the host knows what it handed out, so only it can say who is working.
+          const open = myRole === 'host' ? board.filter(t => t.toId === p.id && t.status === 'sent').slice(-1)[0] : undefined
+          return (
+            <Box key={p.id} flexDirection="column">
+              <Text>
+                <Text color={open ? 'yellow' : 'green'}>● </Text>
+                <Text bold>{p.name}</Text>
+                <Text dimColor> {ago(now - p.seen)}</Text>
+              </Text>
+              {myRole === 'host' ? (
+                <Text key={`state-${p.id}`} wrap="truncate" color={open ? 'yellow' : undefined} dimColor={!open}>
+                  {open ? `  working · ${open.text.slice(0, 24)}` : '  idle'}
+                </Text>
+              ) : null}
+            </Box>
+          )
+        })}
         <Text> </Text>
 
         {myRole === 'host' ? (

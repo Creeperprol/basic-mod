@@ -241,3 +241,29 @@ test('a worker holding a host task is told to only work and report', async ($, o
   await $.prompt.submit({ text: 'hello', origin: { kind: 'composer' } } as any).catch(() => {})
   expect(quiet(await $.prompt.compose(facts))).toBe(false)
 })
+
+test('the pane shows each worker as idle or working', async ($, on) => {
+  const sent: any[] = []
+  const store = new Map<string, unknown>(Object.entries(OTHER_PEER))
+  stand(on, sent, store)
+  await $.session.start({ source: 'startup', cwd: '/work/me' } as any)
+  await run($, 'host', '')
+  const ui = await $.ui.mount({
+    plugin: 'session-link',
+    surface: 'terminal',
+    component: 'Pane',
+    requestId: 'session-link',
+    props: { bodyColumns: 60 },
+  } as any)
+  const idle = ui
+  expect(await idle.find({ type: 'Text', text: /idle/ })).toBeDefined()
+  expect(await idle.find({ type: 'Text', text: /working/ })).toBeUndefined()
+  await run($, 'assign', 'other write the tests')
+  const busy = ui
+  expect(await busy.find({ type: 'Text', text: /working · write the tests/ })).toBeDefined()
+  expect(await busy.find({ type: 'Text', text: /idle/ })).toBeUndefined()
+  const id = /\[TASK (\S+) /.exec(String(sent[0].text))![1]
+  await $.session.receive({ origin: { kind: 'peer' }, text: `[RESULT ${id} from="other-bbbb"]\nok` } as any)
+  const done = ui
+  expect(await done.find({ type: 'Text', text: /idle/ })).toBeDefined()
+})
