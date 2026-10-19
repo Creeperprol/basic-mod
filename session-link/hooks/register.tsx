@@ -15,6 +15,9 @@ const target = atom({ plugin: 'session-link', key: 'target' } as const, 'all')
 const T_ASSIGN = 'mcp__session-link__assign'
 const T_REPORT = 'mcp__session-link__report'
 const T_PEERS = 'mcp__session-link__peers'
+// What the host's model is told about running workers (added to its system prompt while it is the host).
+const HOST_WORKFLOW = `You are the host of a multi-window setup: other Claude sessions (workers) take tasks you give them with the assign tool and answer with a short report. Run it like this. 1) Contract first: before assigning, write the shared contract (file ownership per worker, data shapes, function signatures, constants in one place). 2) Self-contained tasks: name the files the worker may edit, the contract to read, and the exact done-when check (a command that must pass). Workers already work silently, so do not ask them to chat. 3) Share work evenly: size each task (S one small file, M one module, L several modules), give it to the least-loaded idle worker (assign with worker "auto" does this), never queue two tasks on one worker while another is idle, split a lopsided big task by file ownership, and tell the person the split in one table (worker, task, size). Use worker "all" only for tasks that are truly identical. 4) Never trust a report alone: re-run the tests yourself, run an end-to-end check, look at real output, and say what was verified for real and what was not. 5) Diagnose first: reproduce a problem, find the cause, then send the owning worker a precise task with the repro; do not edit a worker's files while it may be editing them. 6) Watch worker context: a report saying NEEDS COMPACT or ctx ~100k or more means send that worker only small tasks and tell the person to run /compact in its window. 7) Use worker names exactly as peers lists them; if assign says no session matches, call peers again. Deploy or publish only when the person asked, after the checks pass.`
+
 const T_RENAME = 'mcp__session-link__rename'
 
 type Peer = { id: string; name: string; cwd: string; seen: number }
@@ -38,6 +41,18 @@ async function listPeers($: any, selfId: string): Promise<Peer[]> {
     if (p && p.id !== selfId && now - p.seen < FRESH_MS) out.push(p)
   }
   return out.sort((a, z) => z.seen - a.seen)
+}
+
+// The one worker to give the next task: fewest open tasks, then fewest finished, so work stays even.
+async function leastLoaded($: any, list: Peer[]): Promise<Peer[]> {
+  const board = (await read($, tasks)) as Task[]
+  const ranked: { p: Peer; open: number; done: number }[] = []
+  for (const p of list) {
+    const done = ((await $.store.get(`done:${p.id}`)) as number | undefined) ?? 0
+    ranked.push({ p, open: board.filter(t => t.toId === p.id && t.status === 'sent').length, done })
+  }
+  ranked.sort((a, z) => a.open - z.open || a.done - z.done || z.p.seen - a.p.seen)
+  return ranked.length ? [ranked[0].p] : []
 }
 
 const pick = (list: Peer[], q: string) => {
@@ -294,10 +309,10 @@ export const register: Register = (on, options) => {
     try {
     await $.tool.register({
       name: 'assign',
-      description: 'Host only. Give a task to another Claude Code session (a worker) and carry on; its result comes back as a message. Use worker "all" for every worker.',
+      description: 'Host only. Give a task to another Claude Code session (a worker) and carry on; its result comes back as a message. Use worker "all" for every worker, or "auto" for the least-loaded one.',
       inputSchema: {
         type: 'object',
-        properties: { worker: { type: 'string', description: 'Worker session name, or "all"' }, task: { type: 'string', description: 'What the worker should do, self-contained' } },
+        properties: { worker: { type: 'string', description: 'Worker session name, "auto" (least-loaded worker) or "all"' }, task: { type: 'string', description: 'What the worker should do, self-contained' } },
         required: ['worker', 'task'],
       },
     })
@@ -345,9 +360,9 @@ export const register: Register = (on, options) => {
     if (!(await isHost($, who))) return { text: 'Run /host first to make this session the host.' }
     const [target, ...rest] = e.args.trim().split(/\s+/)
     const text = rest.join(' ')
-    if (!target || !text) return { text: 'Usage: /assign <session name|all> <task>' }
+    if (!target || !text) return { text: 'Usage: /assign <session name|auto|all> <task> (auto = the least-loaded worker)' }
     const list = await listPeers($, who.id)
-    const chosen = target === 'all' ? list : pick(list, target)
+    const chosen = target === 'all' ? list : target === 'auto' ? await leastLoaded($, list) : pick(list, target)
     if (chosen.length === 0) return { text: `No session matches "${target}". Try /sessions.` }
     if (target !== 'all' && chosen.length > 1) return { text: `"${target}" is ambiguous: ${chosen.map(p => p.name).join(', ')}` }
     const out: string[] = []
@@ -404,7 +419,7 @@ export const register: Register = (on, options) => {
     const task = String(input.task ?? '')
     if (!worker || !task) return { result: 'Both worker and task are required.' }
     const list = await listPeers($, who.id)
-    const chosen = worker === 'all' ? list : pick(list, worker)
+    const chosen = worker === 'all' ? list : worker === 'auto' ? await leastLoaded($, list) : pick(list, worker)
     if (chosen.length === 0) return { result: `No session matches "${worker}".` }
     if (worker !== 'all' && chosen.length > 1) return { result: `"${worker}" is ambiguous: ${chosen.map(p => p.name).join(', ')}` }
     const out: string[] = []
@@ -494,7 +509,8 @@ export const register: Register = (on, options) => {
     const r = await next(e)
     try {
       const quiet = Boolean(await $.store.get(`quiet:${await $.session.id()}`))
-      if (((await read($, inbox)).length === 0 && !quiet) || (await isHost($, await read($, me)))) return r
+      if (await isHost($, await read($, me))) return { sections: [...r.sections, { id: 'session-link:host-workflow', scope: 'session' as const, text: HOST_WORKFLOW }] }
+      if ((await read($, inbox)).length === 0 && !quiet) return r
     } catch {
       return r
     }
@@ -504,7 +520,7 @@ export const register: Register = (on, options) => {
         {
           id: 'session-link:silent-worker',
           scope: 'session' as const,
-          text: `You are a worker in a multi-window setup and a host session has given you a task. Do only that task. Write no chat text between tool calls and no summary or thanks at the end: your only output is tool calls. Do not ask the user questions or offer next steps. When the work is done, call ${T_REPORT} once with the task_id and a short result (one or two sentences), then stop. Hook feedback that arrives after your report (a stop hook, a design or lint finding) is not a reason to write text: act on it with tool calls only, or ignore it, and never explain, triage or summarise it in chat. Your final message after the report must be empty, and this holds until the person next types in this session.`,
+          text: `You are a worker in a multi-window setup and a host session has given you a task. Do only that task. Write no chat text between tool calls and no summary or thanks at the end: your only output is tool calls. Do not ask the user questions or offer next steps. When the work is done, call ${T_REPORT} once with the task_id and a short result (one or two sentences), then stop. Hook feedback that arrives after your report (a stop hook, a design or lint finding) is not a reason to write text: act on it with tool calls only, or ignore it, and never explain, triage or summarise it in chat. Put ctx ~NNk (your best estimate of your context size) in the report and add NEEDS COMPACT at about 100k or more. Read files in parts (grep first, then offset and limit), do not re-read what you just edited, and edit only the files your task names. Your final message after the report must be empty, and this holds until the person next types in this session.`,
         },
       ],
     }
@@ -553,8 +569,9 @@ export const register: Register = (on, options) => {
           const found = (await read($, tasks)).find(t => t.id === id)
           if (found) {
             await update($, tasks, l => l.filter(t => t.id !== id)) // finished tasks clear themselves; the result still lands in the log
+            await $.store.set(`done:${found.toId}`, (((await $.store.get(`done:${found.toId}`)) as number | undefined) ?? 0) + 1)
             await remember($, { at: now, dir: 'in', who: `${result[2]} ✓ ${id}`, text: result[3].slice(0, 300) })
-            $.ui.toast(`${result[2]} finished ${id}`)
+            $.ui.toast(/NEEDS COMPACT/i.test(result[3]) ? `${result[2]} finished ${id} and needs /compact` : `${result[2]} finished ${id}`)
           }
         } else {
           await remember($, { at: now, dir: 'in', who: 'peer', text: e.text.slice(0, 300) })

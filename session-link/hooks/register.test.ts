@@ -286,3 +286,42 @@ test('a host rename is remembered for the session', async ($, on) => {
   await $.session.receive({ origin: { kind: 'peer' }, text: '[RENAME host=hhhh0000]\nworker one' } as any)
   expect(store.get('name:aaaa1111-0000')).toBe('worker one')
 })
+
+const OTHER2 = { id: 'cccc3333-0000', name: 'other-cccc', cwd: '/work/other2', seen: 3600000 }
+
+test('/assign auto gives each task to the least-loaded worker', async ($, on) => {
+  const sent: any[] = []
+  const store = new Map<string, unknown>([
+    ['peer:bbbb2222-0000', OTHER],
+    ['peer:cccc3333-0000', OTHER2],
+  ])
+  stand(on, sent, store)
+  await $.session.start({ source: 'startup', cwd: '/work/me' } as any)
+  await run($, 'host', '')
+  const to = (i: number) => JSON.stringify(sent.filter(m => String(m.text).includes('[TASK'))[i].to)
+  await run($, 'assign', 'auto first job')
+  await run($, 'assign', 'auto second job')
+  // the second task goes to the worker that is still idle, not the one already working
+  expect(to(0)).not.toBe(to(1))
+  // the first worker finishes: it is idle again and the other is still busy, so it takes the next task
+  const first = sent.filter(m => String(m.text).includes('[TASK'))[0]
+  const id = /\[TASK (\S+) /.exec(String(first.text))![1]
+  const firstName = JSON.stringify(first.to).includes('bbbb') ? 'other-bbbb' : 'other-cccc'
+  await $.session.receive({ origin: { kind: 'peer' }, text: `[RESULT ${id} from="${firstName}"]\nok` } as any)
+  await run($, 'assign', 'auto third job')
+  expect(to(2)).toBe(to(0))
+  expect(await store.get('done:bbbb2222-0000') ?? store.get('done:cccc3333-0000')).toBe(1)
+})
+
+test('the host is told how to run workers, and a worker is not', async ($, on) => {
+  const store = new Map<string, unknown>()
+  stand(on, [], store)
+  on('prompt.compose', async () => ({ sections: [] })) // stands for the engine's own prompt beneath the plugin
+  await $.session.start({ source: 'startup', cwd: '/work/me' } as any)
+  const facts = { model: 'm', promptModel: 'm', surfaces: [], tools: [], outputStyle: null, traits: [] } as any
+  const has = async (id: string) => JSON.stringify((await $.prompt.compose(facts)).sections).includes(id)
+  expect(await has('session-link:host-workflow')).toBe(false)
+  await run($, 'host', '')
+  expect(await has('session-link:host-workflow')).toBe(true)
+  expect(await has('session-link:silent-worker')).toBe(false)
+})
