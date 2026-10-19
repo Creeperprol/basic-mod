@@ -237,5 +237,7 @@ test('a worker holding a host task is told to only work and report', async ($, o
   await $.session.receive({ origin: { kind: 'peer' }, text: '[TASK t1 host=hhhh0000 name="boss"]\ndo it\n\nWhen you are finished, call x' } as any)
   expect(quiet(await $.prompt.compose(facts))).toBe(true)
   await $.tool.call({ tool: 'mcp__session-link__report', task_id: 't1', result: 'done' } as any)
+  expect(quiet(await $.prompt.compose(facts))).toBe(true) // still quiet: a stop hook's feedback may follow the report
+  await $.prompt.submit({ text: 'hello', origin: { kind: 'composer' } } as any).catch(() => {})
   expect(quiet(await $.prompt.compose(facts))).toBe(false)
 })

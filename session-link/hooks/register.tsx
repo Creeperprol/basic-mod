@@ -437,6 +437,8 @@ export const register: Register = (on, options) => {
     })
     // The task is done: drop it so the worker goes back to normal once nothing is left.
     if (r.isDelivered) {
+      // Stay quiet until the person next types here: a stop hook's feedback can arrive after the report.
+      await $.store.set(`quiet:${await $.session.id()}`, true)
       await update($, inbox, l => l.filter(i => i.id !== id))
       $.ui.invalidate('ui.render')
     }
@@ -488,7 +490,8 @@ export const register: Register = (on, options) => {
   on('prompt.compose', async ($, e, next) => {
     const r = await next(e)
     try {
-      if ((await read($, inbox)).length === 0 || (await isHost($, await read($, me)))) return r
+      const quiet = Boolean(await $.store.get(`quiet:${await $.session.id()}`))
+      if (((await read($, inbox)).length === 0 && !quiet) || (await isHost($, await read($, me)))) return r
     } catch {
       return r
     }
@@ -498,7 +501,7 @@ export const register: Register = (on, options) => {
         {
           id: 'session-link:silent-worker',
           scope: 'session' as const,
-          text: `You are a worker in a multi-window setup and a host session has given you a task. Do only that task. Write no chat text between tool calls and no summary or thanks at the end: your only output is tool calls. Do not ask the user questions or offer next steps. When the work is done, call ${T_REPORT} once with the task_id and a short result (one or two sentences), then stop. Hook feedback that arrives after your report (a stop hook, a design or lint finding) is not a reason to write text: act on it with tool calls only, or ignore it, and never explain, triage or summarise it in chat. Your final message after the report must be empty.`,
+          text: `You are a worker in a multi-window setup and a host session has given you a task. Do only that task. Write no chat text between tool calls and no summary or thanks at the end: your only output is tool calls. Do not ask the user questions or offer next steps. When the work is done, call ${T_REPORT} once with the task_id and a short result (one or two sentences), then stop. Hook feedback that arrives after your report (a stop hook, a design or lint finding) is not a reason to write text: act on it with tool calls only, or ignore it, and never explain, triage or summarise it in chat. Your final message after the report must be empty, and this holds until the person next types in this session.`,
         },
       ],
     }
@@ -767,6 +770,14 @@ export const register: Register = (on, options) => {
 
   on('prompt.submit', async ($, e, next) => {
     turns += 1
+    // A prompt the person types ends a worker's quiet spell.
+    if ((e as { origin?: { kind?: string } }).origin?.kind === 'composer') {
+      try {
+        await $.store.delete(`quiet:${await $.session.id()}`)
+      } catch {
+        // the store is best effort
+      }
+    }
     // A pane the mod opens on its own waits below 144 columns; one opened in answer to the
     // person's prompt is seated from 110. So ask once, on their first prompt.
     if (!askedOnce && options.autoOpen !== false) {
