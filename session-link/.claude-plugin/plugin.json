@@ -1,6 +1,6 @@
 {
   "name": "session-link",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Side panes for Claude Code: a usage pane (context, limits, cost, tools) and session link (sessions message each other, host mode)",
   "types": "./types/index.d.ts",
   "userConfig": {
