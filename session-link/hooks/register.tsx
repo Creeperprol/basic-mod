@@ -48,7 +48,10 @@ const pick = (list: Peer[], q: string) => {
 }
 
 async function announce($: any, who: Me, cwd: string) {
-  const peer: Peer = { id: who.id, name: who.name, cwd, seen: await $.clock.now() }
+  // A name chosen for this session (rename or auto-rename) survives a name rebuilt from the folder.
+  const saved = (await $.store.get(`name:${who.id}`)) as string | undefined
+  const name = saved || who.name
+  const peer: Peer = { id: who.id, name, cwd, seen: await $.clock.now() }
   await $.store.set(`peer:${who.id}`, peer)
 }
 
@@ -261,7 +264,7 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     const id = await $.session.id()
     const cwd = await $.session.cwd()
-    let name = options.name ? String(options.name) : `${base(cwd)}-${id.slice(0, 4)}`
+    let name = options.name ? String(options.name) : ((await $.store.get(`name:${id}`)) as string | undefined) || `${base(cwd)}-${id.slice(0, 4)}`
     // /clear starts a new session id: carry the name and the host role over from the one it replaced.
     const carried = (e as { source?: string }).source === 'clear' ? await takeHandoff($, cwd) : null
     if (carried && !options.name) name = carried.name
@@ -537,6 +540,7 @@ export const register: Register = (on, options) => {
           if (h && h.id === rename[1] && name && who) {
             await $.command.run({ command: 'rename', args: name })
             const renamed: Me = { id: who.id, name }
+            await $.store.set(`name:${who.id}`, renamed.name)
             await update($, me, () => renamed)
             await announce($, renamed, await $.session.cwd())
             await remember($, { at: now, dir: 'in', who: h.name, text: `renamed this session to "${name}"` })
@@ -571,6 +575,7 @@ export const register: Register = (on, options) => {
       const t = e.args.trim()
       if (who && t && !options.name && who.name !== t) {
         const renamed: Me = { id: who.id, name: t }
+        await $.store.set(`name:${who.id}`, renamed.name)
         await update($, me, () => renamed)
         await announce($, renamed, await $.session.cwd())
         $.ui.invalidate('ui.render')
@@ -590,6 +595,7 @@ export const register: Register = (on, options) => {
       const t = e.session_title ? String(e.session_title) : ''
       if (who && t && !options.name && who.name !== t) {
         const renamed: Me = { id: who.id, name: t }
+        await $.store.set(`name:${who.id}`, renamed.name)
         await update($, me, () => renamed)
         await announce($, renamed, await $.session.cwd())
         $.ui.invalidate('ui.render')

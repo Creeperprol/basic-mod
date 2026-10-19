@@ -267,3 +267,22 @@ test('the pane shows each worker as idle or working', async ($, on) => {
   const done = ui
   expect(await done.find({ type: 'Text', text: /idle/ })).toBeDefined()
 })
+
+test('a name chosen for the session is not replaced by one rebuilt from the folder', async ($, on) => {
+  const store = new Map<string, unknown>([['name:aaaa1111-0000', 'worker-2']])
+  stand(on, [], store)
+  await $.session.start({ source: 'startup', cwd: '/work/video-2' } as any)
+  expect(store.get('peer:aaaa1111-0000')).toMatchObject({ name: 'worker-2' })
+  // a later heartbeat from another folder still keeps the chosen name
+  await $.session.start({ source: 'resume', cwd: '/work/other-dir' } as any)
+  expect(store.get('peer:aaaa1111-0000')).toMatchObject({ name: 'worker-2' })
+})
+
+test('a host rename is remembered for the session', async ($, on) => {
+  const store = new Map<string, unknown>([['host', { id: 'hhhh0000', name: 'boss' }]])
+  stand(on, [], store)
+  on('command.run', () => ({ text: 'renamed' }))
+  await $.session.start({ source: 'startup', cwd: '/work/me' } as any)
+  await $.session.receive({ origin: { kind: 'peer' }, text: '[RENAME host=hhhh0000]\nworker one' } as any)
+  expect(store.get('name:aaaa1111-0000')).toBe('worker one')
+})
