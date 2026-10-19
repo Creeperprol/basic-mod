@@ -112,7 +112,10 @@ const cleanName = (raw: string) => raw.replace(/<[^>]*>/g, ' ').replace(/\s+/g, 
 
 // Asks one worker to take a new session name.
 async function renameWorker($: any, who: Me, p: Peer, name: string): Promise<string | null> {
-  return deliver($, who, p, `[RENAME host=${who.id}]\n${name}`)
+  const failed = await deliver($, who, p, `[RENAME host=${who.id}]\n${name}`)
+  // Remember a worker the host has named, so auto-rename never overrides it (the peer list can lag behind a rename).
+  if (!failed) await $.store.set(`named:${p.id}`, true)
+  return failed
 }
 
 // Empties the whole board (the pane's Clear board button).
@@ -133,9 +136,10 @@ async function assign($: any, who: Me, p: Peer, text: string): Promise<string | 
   const body = `[TASK ${id} host=${who.id} name="${who.name}"]\n${text}\n\nWhen you are finished, call the tool ${T_REPORT} with task_id "${id}" and a short result.`
   const failed = await deliver($, who, p, body)
   // A worker still on its random default name is renamed after its first task.
-  if (!failed && /-[0-9a-f]{4}$/.test(p.name)) {
+  if (!failed && /-[0-9a-f]{4}$/.test(p.name) && !(await $.store.get(`named:${p.id}`))) {
     const short = cleanName(text).split(' ').slice(0, 3).join('-').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 20)
-    if (short) await renameWorker($, who, p, short)
+    const taken = (await listPeers($, who.id)).some(q => q.id !== p.id && q.name === short)
+    if (short) await renameWorker($, who, p, taken ? `${short}-${p.id.slice(0, 2)}` : short)
   }
   const t: Task = { id, toId: p.id, toName: p.name, text, status: failed ? 'failed' : 'sent', at: await $.clock.now() }
   await update($, tasks, l => [...l.filter(x => x.status !== 'failed' || t.at - x.at < 600000), t].slice(-30))
@@ -431,6 +435,11 @@ export const register: Register = (on, options) => {
       to: { sessionId: found.hostId },
       text: `[RESULT ${id} from="${who.name}"]\n${String(input.result ?? '')}`,
     })
+    // The task is done: drop it so the worker goes back to normal once nothing is left.
+    if (r.isDelivered) {
+      await update($, inbox, l => l.filter(i => i.id !== id))
+      $.ui.invalidate('ui.render')
+    }
     return { result: r.isDelivered ? 'Result sent to the host.' : `Could not reach the host: ${r.reason}` }
   })
 
@@ -475,6 +484,26 @@ export const register: Register = (on, options) => {
     return { text: `Sent to ${list.length - failures.length}/${list.length} sessions.${failures.length ? '\n' + failures.join('\n') : ''}` }
   })
 
+  // Multi-window: while this session holds a host task, the model only does the work and reports.
+  on('prompt.compose', async ($, e, next) => {
+    const r = await next(e)
+    try {
+      if ((await read($, inbox)).length === 0 || (await isHost($, await read($, me)))) return r
+    } catch {
+      return r
+    }
+    return {
+      sections: [
+        ...r.sections,
+        {
+          id: 'session-link:silent-worker',
+          scope: 'session' as const,
+          text: `You are a worker in a multi-window setup and a host session has given you a task. Do only that task. Write no chat text between tool calls and no summary or thanks at the end: your only output is tool calls. Do not ask the user questions or offer next steps. When the work is done, call ${T_REPORT} once with the task_id and a short result (one or two sentences), then stop. Hook feedback that arrives after your report (a stop hook, a design or lint finding) is not a reason to write text: act on it with tool calls only, or ignore it, and never explain, triage or summarise it in chat. Your final message after the report must be empty.`,
+        },
+      ],
+    }
+  })
+
   // Record what other sessions say to this one; the model still reads it as usual.
   on('session.receive', async ($, e, next) => {
     if (e.origin.kind === 'peer' || e.origin.kind === 'peer-send-message') {
@@ -509,6 +538,8 @@ export const register: Register = (on, options) => {
             await announce($, renamed, await $.session.cwd())
             await remember($, { at: now, dir: 'in', who: h.name, text: `renamed this session to "${name}"` })
             $.ui.toast(`${h.name} renamed this session to "${name}"`)
+            // The rename is handled here: the model never reads it, so the worker does not answer it.
+            return { consumed: 'rename applied' }
           }
         } else if (result) {
           const id = result[1]
