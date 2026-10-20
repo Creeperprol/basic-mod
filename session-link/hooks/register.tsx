@@ -19,10 +19,16 @@ const T_PEERS = 'mcp__session-link__peers'
 const HOST_WORKFLOW = `You are the host of a multi-window setup: other Claude sessions (workers) take tasks you give them with the assign tool and answer with a short report. Run it like this. 1) Contract first: before assigning, write the shared contract (file ownership per worker, data shapes, function signatures, constants in one place). 2) Self-contained tasks: name the files the worker may edit, the contract to read, and the exact done-when check (a command that must pass). Workers already work silently, so do not ask them to chat. 3) Share work evenly: size each task (S one small file, M one module, L several modules), give it to the least-loaded idle worker (assign with worker "auto" does this), never queue two tasks on one worker while another is idle, split a lopsided big task by file ownership, and tell the person the split in one table (worker, task, size). Use worker "all" only for tasks that are truly identical. 4) Never trust a report alone: re-run the tests yourself, run an end-to-end check, look at real output, and say what was verified for real and what was not. 5) Diagnose first: reproduce a problem, find the cause, then send the owning worker a precise task with the repro; do not edit a worker's files while it may be editing them. 6) Watch worker context: a report saying NEEDS COMPACT or ctx ~100k or more means send that worker only small tasks and tell the person to run /compact in its window. 7) Use worker names exactly as peers lists them; if assign says no session matches, call peers again. Deploy or publish only when the person asked, after the checks pass.`
 
 const T_RENAME = 'mcp__session-link__rename'
+const T_COMMAND = 'mcp__session-link__command'
 
 type Peer = { id: string; name: string; cwd: string; seen: number }
 
 const FRESH_MS = 6 * 3600 * 1000
+// A task still open after this long is shown as stale and no longer counts against its worker.
+const STALE_TASK_MS = 15 * 60 * 1000
+const isStale = (t: Task, now: number) => t.status === 'sent' && now - t.at >= STALE_TASK_MS
+// Commands that would wipe a worker's context while it still holds an unfinished task.
+const DESTRUCTIVE_COMMANDS = new Set(['clear', 'compact'])
 
 const ago = (ms: number) => {
   const m = Math.max(0, Math.floor(ms / 60000))
@@ -46,10 +52,11 @@ async function listPeers($: any, selfId: string): Promise<Peer[]> {
 // The one worker to give the next task: fewest open tasks, then fewest finished, so work stays even.
 async function leastLoaded($: any, list: Peer[]): Promise<Peer[]> {
   const board = (await read($, tasks)) as Task[]
+  const now = await $.clock.now()
   const ranked: { p: Peer; open: number; done: number }[] = []
   for (const p of list) {
     const done = ((await $.store.get(`done:${p.id}`)) as number | undefined) ?? 0
-    ranked.push({ p, open: board.filter(t => t.toId === p.id && t.status === 'sent').length, done })
+    ranked.push({ p, open: board.filter(t => t.toId === p.id && t.status === 'sent' && !isStale(t, now)).length, done })
   }
   ranked.sort((a, z) => a.open - z.open || a.done - z.done || z.p.seen - a.p.seen)
   return ranked.length ? [ranked[0].p] : []
@@ -87,6 +94,17 @@ async function deliver($: any, who: Me, p: Peer, text: string): Promise<string |
 
 const TASK_RE = /\[TASK (\S+) host=(\S+) name="([^"]*)"\]\n([\s\S]*)$/
 const RENAME_RE = /\[RENAME host=(\S+)\]\n([\s\S]*)$/
+const COMMAND_RE = /\[COMMAND host=(\S+)\]\n([\s\S]*)$/
+// Slash commands a host may run in a worker. Only ones that run without opening a picker or dialog (/model, /theme, /status... need a person at the keyboard and would leave the worker stuck). Nothing that runs code, edits files or changes permissions.
+const WORKER_COMMANDS = new Set(['compact', 'clear', 'cost'])
+// Splits "/cost" into its command and arguments; null unless the command is on the allowlist.
+function parseWorkerCommand(raw: string): { command: string; args: string } | null {
+  const m = /^\/?([a-z][a-z-]*)(?:\s+([\s\S]*))?$/.exec(raw.replace(/<[^>]*>/g, ' ').trim().split('\n')[0].trim().slice(0, 200))
+  return m && WORKER_COMMANDS.has(m[1]) ? { command: m[1], args: (m[2] ?? '').trim() } : null
+}
+const REPORT_DONE = 'Result sent to the host. DONE: do not call report again. Your whole turn is finished. Write no text, no summary and no status line; if you must output something, output only a single period (.)'
+// Task ids whose report is being or has been sent, so a repeated report call is not sent twice.
+const reporting = new Set<string>()
 const RESULT_RE = /\[RESULT (\S+) from="([^"]*)"\]\n([\s\S]*)$/
 
 async function hostRecord($: any): Promise<{ id: string; name: string } | null> {
@@ -130,10 +148,42 @@ const cleanName = (raw: string) => raw.replace(/<[^>]*>/g, ' ').replace(/\s+/g, 
 
 // Asks one worker to take a new session name.
 async function renameWorker($: any, who: Me, p: Peer, name: string): Promise<string | null> {
+  // Names stay unique among live sessions (case-insensitive); the worker's own name is a no-op.
+  if (p.name.toLowerCase() === name.toLowerCase()) return null
+  const clash = (await listPeers($, who.id)).find(q => q.id !== p.id && q.name.toLowerCase() === name.toLowerCase())
+  if (clash || who.name.toLowerCase() === name.toLowerCase()) return `name already used by ${clash ? clash.name : who.name}`
   const failed = await deliver($, who, p, `[RENAME host=${who.id}]\n${name}`)
   // Remember a worker the host has named, so auto-rename never overrides it (the peer list can lag behind a rename).
   if (!failed) await $.store.set(`named:${p.id}`, true)
   return failed
+}
+
+// Asks one worker to run a slash command such as /cost.
+async function commandWorker($: any, who: Me, p: Peer, line: string): Promise<string | null> {
+  return deliver($, who, p, `[COMMAND host=${who.id}]\n${line}`)
+}
+
+// Runs a slash command line on one worker, or on every worker for "all". Returns a one-line outcome.
+async function runOnWorkers($: any, who: Me, target: string, line: string): Promise<string> {
+  const parsed = parseWorkerCommand(line)
+  if (!parsed) return `Not allowed. Allowed commands: ${[...WORKER_COMMANDS].map(c => '/' + c).join(', ')}.`
+  const peers = await listPeers($, who.id)
+  const matches = target === 'all' ? peers : pick(peers, target)
+  if (matches.length === 0) return `No session matches "${target}". Try /sessions.`
+  if (target !== 'all' && matches.length > 1) return `"${target}" is ambiguous: ${matches.map(p => p.name).join(', ')}`
+  const out: string[] = []
+  const board = (await read($, tasks)) as Task[]
+  const now = await $.clock.now()
+  for (const p of matches) {
+    const busy = board.find(t => t.toId === p.id && t.status === 'sent' && !isStale(t, now))
+    if (DESTRUCTIVE_COMMANDS.has(parsed.command) && busy) {
+      out.push(`${p.name}: refused (still working on task ${busy.id}; /${parsed.command} would lose it)`)
+      continue
+    }
+    const failed = await commandWorker($, who, p, `/${parsed.command} ${parsed.args}`.trim())
+    out.push(failed ? `${p.name}: failed (${failed})` : `${p.name}: asked`)
+  }
+  return `/${parsed.command} ${parsed.args}`.trim() + ' -> ' + out.join('; ')
 }
 
 // Empties the whole board (the pane's Clear board button).
@@ -150,14 +200,19 @@ async function clearLog($: any) {
 
 // Hands one task to one worker and logs it on the board.
 async function assign($: any, who: Me, p: Peer, text: string): Promise<string | null> {
-  const id = `t${((await $.clock.now()) % 46656).toString(36)}${(await read($, tasks)).length}`
+  const used = new Set([...(await read($, tasks)).map(t => t.id), ...(await read($, inbox)).map(i => i.id)])
+  let id = ''
+  do id = `t${Math.random().toString(36).slice(2, 8).padEnd(6, '0')}`
+  while (used.has(id))
   const body = `[TASK ${id} host=${who.id} name="${who.name}"]\n${text}\n\nWhen you are finished, call the tool ${T_REPORT} with task_id "${id}" and a short result.`
   const failed = await deliver($, who, p, body)
   // A worker still on its random default name is renamed after its first task.
   if (!failed && /-[0-9a-f]{4}$/.test(p.name) && !(await $.store.get(`named:${p.id}`))) {
     const short = cleanName(text).split(' ').slice(0, 3).join('-').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 20)
-    const taken = (await listPeers($, who.id)).some(q => q.id !== p.id && q.name === short)
-    if (short) await renameWorker($, who, p, taken ? `${short}-${p.id.slice(0, 2)}` : short)
+    const names = new Set([...(await listPeers($, who.id)).filter(q => q.id !== p.id).map(q => q.name.toLowerCase()), who.name.toLowerCase()])
+    let pickName = short
+    for (let n = 2; names.has(pickName.toLowerCase()); n++) pickName = `${short}-${n === 2 ? p.id.slice(0, 2) : p.id.slice(0, 2) + n}`
+    if (short) await renameWorker($, who, p, pickName)
   }
   const t: Task = { id, toId: p.id, toName: p.name, text, status: failed ? 'failed' : 'sent', at: await $.clock.now() }
   await update($, tasks, l => [...l.filter(x => x.status !== 'failed' || t.at - x.at < 600000), t].slice(-30))
@@ -298,6 +353,7 @@ export const register: Register = (on, options) => {
       ['assign', 'Host: give a task to a session: /assign <name|all> <task>'],
       ['board', 'Host: show the task board, or /board clear to empty the board and messages'],
       ['setname', 'Host: rename another session: /setname <session> <new name>'],
+      ['run', 'Host: run a slash command in a worker: /run <session|all> /cost'],
     ]) {
       try {
         await $.command.register({ name, description })
@@ -323,6 +379,15 @@ export const register: Register = (on, options) => {
         type: 'object',
         properties: { task_id: { type: 'string' }, result: { type: 'string', description: 'Short result or summary' } },
         required: ['task_id', 'result'],
+      },
+    })
+    await $.tool.register({
+      name: 'command',
+      description: `Host only. Run a slash command in a worker session, e.g. "/cost" or "/effort high". Allowed: ${[...WORKER_COMMANDS].join(', ')}. Use worker "all" for every worker.`,
+      inputSchema: {
+        type: 'object',
+        properties: { worker: { type: 'string', description: 'Worker session name, or "all"' }, command: { type: 'string', description: 'The slash command with its arguments, e.g. "/cost"' } },
+        required: ['worker', 'command'],
       },
     })
     await $.tool.register({
@@ -387,6 +452,16 @@ export const register: Register = (on, options) => {
     return { text: failed ? `Not renamed. ${failed}` : `Asked ${matches[0].name} to rename itself to "${name}".` }
   })
 
+  on('command.run', { command: 'run' }, async ($, e) => {
+    const who = await read($, me)
+    if (!who) return { text: 'Session link is not ready yet.' }
+    if (!(await isHost($, who))) return { text: 'Run /host first to make this session the host.' }
+    const [target, ...rest] = e.args.trim().split(/\s+/)
+    const line = rest.join(' ')
+    if (!target || !line) return { text: 'Usage: /run <session|all> /cost' }
+    return { text: await runOnWorkers($, who, target, line) }
+  })
+
   on('command.run', { command: 'board' }, async ($, e) => {
     if (e.args.trim() === 'clear') {
       const before = (await read($, tasks)).length
@@ -397,9 +472,10 @@ export const register: Register = (on, options) => {
     const list = await read($, tasks)
     if (list.length === 0) return { text: 'No tasks yet.' }
     const icon = { sent: '…', done: '✓', failed: '✗' }
+    const now = await $.clock.now()
     return {
       text: list
-        .map(t => `${icon[t.status]} ${t.id}  ${t.toName}: ${t.text.slice(0, 60)}${t.result ? `\n    ⇒ ${t.result.slice(0, 200)}` : ''}`)
+        .map(t => `${isStale(t, now) ? '⚠ stale' : icon[t.status]} ${t.id}  ${t.toName}: ${t.text.slice(0, 60)}${t.result ? `\n    ⇒ ${t.result.slice(0, 200)}` : ''}`)
         .join('\n'),
     }
   })
@@ -430,6 +506,16 @@ export const register: Register = (on, options) => {
     return { result: out.join('\n') }
   })
 
+  on('tool.call', { tool: T_COMMAND }, async ($, e) => {
+    const who = await read($, me)
+    if (!who || !(await isHost($, who))) return { result: 'This session is not the host. The person must run /host first.' }
+    const input = e as unknown as { worker?: string; command?: string }
+    const worker = String(input.worker ?? '')
+    const line = String(input.command ?? '')
+    if (!worker || !line) return { result: 'Both worker and command are required.' }
+    return { result: await runOnWorkers($, who, worker, line) }
+  })
+
   on('tool.call', { tool: T_RENAME }, async ($, e) => {
     const who = await read($, me)
     if (!who || !(await isHost($, who))) return { result: 'This session is not the host. The person must run /host first.' }
@@ -449,6 +535,9 @@ export const register: Register = (on, options) => {
     const id = String(input.task_id ?? '')
     const found = (await read($, inbox)).find(i => i.id === id)
     if (!who || !found) return { result: `No task ${id} was assigned to this session.` }
+    // A second report for the same task (even one fired in the same batch) is not sent again.
+    if (reporting.has(id)) return { result: REPORT_DONE }
+    reporting.add(id)
     const r = await $.session.send({
       to: { sessionId: found.hostId },
       text: `[RESULT ${id} from="${who.name}"]\n${String(input.result ?? '')}`,
@@ -460,7 +549,8 @@ export const register: Register = (on, options) => {
       await update($, inbox, l => l.filter(i => i.id !== id))
       $.ui.invalidate('ui.render')
     }
-    return { result: r.isDelivered ? 'Result sent to the host.' : `Could not reach the host: ${r.reason}` }
+    if (!r.isDelivered) reporting.delete(id) // a failed send may be retried
+    return { result: r.isDelivered ? REPORT_DONE : `Could not reach the host: ${r.reason}` }
   })
 
   on('command.run', { command: 'link' }, async $ => {
@@ -520,7 +610,7 @@ export const register: Register = (on, options) => {
         {
           id: 'session-link:silent-worker',
           scope: 'session' as const,
-          text: `You are a worker in a multi-window setup and a host session has given you a task. Do only that task. Write no chat text between tool calls and no summary or thanks at the end: your only output is tool calls. Do not ask the user questions or offer next steps. When the work is done, call ${T_REPORT} once with the task_id and a short result (one or two sentences), then stop. Hook feedback that arrives after your report (a stop hook, a design or lint finding) is not a reason to write text: act on it with tool calls only, or ignore it, and never explain, triage or summarise it in chat. Put ctx ~NNk (your best estimate of your context size) in the report and add NEEDS COMPACT at about 100k or more. Read files in parts (grep first, then offset and limit), do not re-read what you just edited, and edit only the files your task names. Your final message after the report must be empty, and this holds until the person next types in this session.`,
+          text: `You are a worker in a multi-window setup and a host session has given you a task. Do only that task. Write no chat text between tool calls and no summary or thanks at the end: your only output is tool calls. Do not ask the user questions or offer next steps. When the work is done, call ${T_REPORT} once with the task_id and a short result (one or two sentences), then stop. Hook feedback that arrives after your report (a stop hook, a design or lint finding) is not a reason to write text: act on it with tool calls only, or ignore it, and never explain, triage or summarise it in chat. Put ctx ~NNk (your best estimate of your context size) in the report and add NEEDS COMPACT at about 100k or more. Read files in parts (grep first, then offset and limit), do not re-read what you just edited, and edit only the files your task names. Never write a closing line such as "Task X is done", "Nothing is left to do", "Idle" or a restatement of your report: the report call already said it. If the harness forces you to write something after the report, write exactly one period (.) and nothing else. This holds until the person next types in this session.`,
         },
       ],
     }
@@ -534,6 +624,7 @@ export const register: Register = (on, options) => {
         const task = TASK_RE.exec(e.text)
         const result = RESULT_RE.exec(e.text)
         const rename = RENAME_RE.exec(e.text)
+        const cmd = COMMAND_RE.exec(e.text)
         if (task) {
           // A task is only taken from the session registered as the host.
           const h = await hostRecord($)
@@ -547,6 +638,21 @@ export const register: Register = (on, options) => {
                 .submit({ text: `Task ${item.id} from host "${item.hostName}": ${item.text}\nWhen finished, call ${T_REPORT} with task_id "${item.id}" and a short result.` })
                 .catch(() => {})
             }
+          }
+        } else if (cmd) {
+          // A command is only taken from the session registered as the host, and only from the allowlist.
+          const h = await hostRecord($)
+          const parsed = parseWorkerCommand(cmd[2])
+          if (h && h.id === cmd[1] && parsed && DESTRUCTIVE_COMMANDS.has(parsed.command) && (await read($, inbox)).length > 0) {
+            await remember($, { at: now, dir: 'in', who: h.name, text: `refused /${parsed.command}: an unfinished task is still open` })
+            $.ui.toast(`Refused /${parsed.command} from ${h.name}: finish the open task first`)
+            return { consumed: 'command refused' }
+          }
+          if (h && h.id === cmd[1] && parsed) {
+            await $.command.run({ command: parsed.command, args: parsed.args })
+            await remember($, { at: now, dir: 'in', who: h.name, text: `ran /${parsed.command} ${parsed.args}`.trim() })
+            $.ui.toast(`${h.name} ran /${parsed.command} ${parsed.args}`.trim())
+            return { consumed: 'command applied' }
           }
         } else if (rename) {
           // A rename is only taken from the session registered as the host.
@@ -567,7 +673,12 @@ export const register: Register = (on, options) => {
         } else if (result) {
           const id = result[1]
           const found = (await read($, tasks)).find(t => t.id === id)
-          if (found) {
+          // Only the worker the task went to may finish it; anyone else's result is logged and ignored.
+          const peer = found ? ((await $.store.get(`peer:${found.toId}`)) as Peer | undefined) : undefined
+          const fromOwner = !!found && (result[2] === found.toName || result[2] === peer?.name)
+          if (found && !fromOwner) {
+            await remember($, { at: now, dir: 'in', who: `${result[2]} ✗ ignored ${id}`, text: result[3].slice(0, 300) })
+          } else if (found) {
             await update($, tasks, l => l.filter(t => t.id !== id)) // finished tasks clear themselves; the result still lands in the log
             await $.store.set(`done:${found.toId}`, (((await $.store.get(`done:${found.toId}`)) as number | undefined) ?? 0) + 1)
             await remember($, { at: now, dir: 'in', who: `${result[2]} ✓ ${id}`, text: result[3].slice(0, 300) })
@@ -679,7 +790,7 @@ export const register: Register = (on, options) => {
         {list.length === 0 ? <Text dimColor>none running</Text> : null}
         {list.map(p => {
           // Only the host knows what it handed out, so only it can say who is working.
-          const open = myRole === 'host' ? board.filter(t => t.toId === p.id && t.status === 'sent').slice(-1)[0] : undefined
+          const open = myRole === 'host' ? board.filter(t => t.toId === p.id && t.status === 'sent' && !isStale(t, now)).slice(-1)[0] : undefined
           return (
             <Box key={p.id} flexDirection="column">
               <Text>
@@ -704,7 +815,7 @@ export const register: Register = (on, options) => {
             {board.length ? <Button key="clear" label="Clear board" onPress={() => clearBoard($)} /> : null}
             {board.slice(-4).map(t => (
               <Text key={t.id} wrap="truncate">
-                <Text color={t.status === 'failed' ? 'red' : 'yellow'}>{t.status === 'failed' ? '✗ ' : '… '}</Text>
+                <Text color={t.status === 'failed' ? 'red' : 'yellow'}>{t.status === 'failed' ? '✗ ' : isStale(t, now) ? '⚠ stale ' : '… '}</Text>
                 <Text bold>{t.toName.slice(0, 14)} </Text>
                 <Text dimColor>{t.text.slice(0, 28)}</Text>
               </Text>

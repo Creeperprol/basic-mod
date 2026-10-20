@@ -23,6 +23,7 @@ Lets your sessions on one machine find and message each other, and lets one act 
 - `/sessions` lists the other running sessions. `/tell <name> <message>` and `/tellall <message>` send messages.
 - `/host` makes this session the host. `/assign <name|auto|all> <task>` hands out a task (`auto` picks the least-loaded worker; the host's model is also told how to run workers: contract first, even sizing, verify reports); `/board` shows the open tasks (finished ones clear themselves), `/board clear` empties the board and messages. `/setname <name> <new name>` renames a worker. The pane has a box for typing a task.
 - Workers answer through a `report` tool. While a worker holds a host task it is told to write no chat text and only report; a host's rename is applied by the plugin and never shown to the worker's model.
+- `/run <name|all> /cost` and the `command` tool let the host run `compact`, `clear` or `cost` in a worker (commands that open a dialog, like `/model`, are refused). A result only clears a task when it comes from the worker it was assigned to, tasks open over 15 minutes show as stale, renames refuse a name another session already uses, and after a report the worker is told it is done so it writes no closing summary.
 - "Auto-run tasks from the host" is off by default. When on, a task starts a turn in that session immediately, so only enable it for sessions you trust.
 - A worker only accepts tasks and renames from the session registered as host. Sessions share a list through the plugin's own store file under `~/.claude`.
 
