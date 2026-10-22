@@ -181,21 +181,17 @@ test('codex-agent.sh checks its arguments and offers no dangerous sandbox', asyn
   assert.equal(run('-d', '/no/such/folder', 'x').status, 2)
 })
 
-test('a session started in the home folder is named <cli>-home-..., never after the user name', async () => {
-  const mk = (cli, cwd) => {
-    const p = spawn('node', [SERVER], { cwd, env: { ...process.env, LINK_HOME: HOME, LINK_CLI: cli, LINK_NAME: '' }, stdio: ['pipe', 'pipe', 'inherit'] })
-    return p
-  }
+test('default session names are <cli>-<id>, with no folder or user name in them', async () => {
+  const mk = (cli, cwd) => spawn('node', [SERVER], { cwd, env: { ...process.env, LINK_HOME: HOME, LINK_CLI: cli, LINK_NAME: '' }, stdio: ['pipe', 'pipe', 'inherit'] })
   const watcher = start('claude', 'watcher')
   await watcher.init()
   const a = mk('claude', os.homedir())
   const b = mk('codex', os.tmpdir())
   await new Promise(r => setTimeout(r, 600))
   const seen = (await watcher.tool('link_peers')).text
-  const user = path.basename(os.homedir())
-  assert.match(seen, /claude-home-[0-9a-f]{4}\s+\[claude\]/)
-  assert.doesNotMatch(seen, new RegExp(`claude-${user}`))
-  assert.match(seen, new RegExp(`codex-${path.basename(os.tmpdir())}-[0-9a-f]{4}`)) // other folders keep their name
+  assert.match(seen, /claude-[0-9a-f]{4}\s+\[claude\]/)
+  assert.match(seen, /codex-[0-9a-f]{4}\s+\[codex\]/)
+  assert.doesNotMatch(seen, new RegExp(`-${path.basename(os.homedir())}-|-home-|-${path.basename(os.tmpdir())}-`))
   a.kill()
   b.kill()
   watcher.stop()
