@@ -102,3 +102,81 @@ test('sessions of different CLIs find each other, hand out work and report back'
   host.stop()
   codex.stop()
 })
+
+test('an Antigravity (agy) session takes a task from a Claude host and reports back', async () => {
+  const host = start('claude', 'boss2')
+  const agy = start('agy', 'agy-worker-1')
+  for (const s of [host, agy]) await s.init()
+  await new Promise(r => setTimeout(r, 300))
+  assert.match((await host.tool('link_peers')).text, /agy-worker-1\s+\[agy\]/)
+  assert.match((await host.tool('link_host', { on: true })).text, /is the host/)
+  const assigned = await host.tool('link_assign', { worker: 'agy-worker-1', task: 'what is 17 times 23?' })
+  const id = /\((t[0-9a-f]+)\)/.exec(assigned.text)[1]
+  const got = await agy.tool('link_inbox', { wait_seconds: 3 })
+  assert.match(got.text, new RegExp(`TASK ${id} from host "boss2"`))
+  assert.match((await agy.tool('link_report', { task_id: id, result: '391' })).text, /Result sent to the host/)
+  assert.match((await host.tool('link_inbox', { wait_seconds: 3 })).text, new RegExp(`RESULT ${id} from "agy-worker-1":\\n391`))
+  host.stop()
+  agy.stop()
+})
+
+test('agy-worker.sh validates the model name and builds a worker command', async () => {
+  const { spawnSync } = await import('node:child_process')
+  const script = new URL('./agy-worker.sh', import.meta.url).pathname
+  const bad = spawnSync('bash', [script, '-n', '-m', 'x;rm -rf /'], { encoding: 'utf8' })
+  assert.notEqual(bad.status, 0)
+  assert.match(bad.stderr, /invalid model name/)
+  const settings = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'agy-s-')), 'settings.json')
+  fs.writeFileSync(settings, JSON.stringify({ trustedWorkspaces: [os.tmpdir()] }))
+  const ok = spawnSync('bash', [script, '-n', '-w', '-d', os.tmpdir(), '-m', 'gemini-3.8-flash-low'], { encoding: 'utf8', env: { ...process.env, AGY_SETTINGS: settings } })
+  assert.equal(ok.status, 0)
+  assert.match(ok.stdout, /agy --model gemini-3\.8-flash-low -i /)
+  assert.match(ok.stdout, /link_inbox/)
+})
+
+test('agy-worker.sh refuses an interactive window in a folder agy does not trust, but not a headless run', async () => {
+  const { spawnSync } = await import('node:child_process')
+  const script = new URL('./agy-worker.sh', import.meta.url).pathname
+  const trusted = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-trusted-'))
+  const other = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-other-'))
+  const nested = path.join(trusted, 'sub')
+  fs.mkdirSync(nested)
+  const settings = path.join(trusted, 'settings.json')
+  fs.writeFileSync(settings, JSON.stringify({ trustedWorkspaces: [trusted] }))
+  const run = (...a) => spawnSync('bash', [script, '-n', ...a], { encoding: 'utf8', env: { ...process.env, AGY_SETTINGS: settings } })
+  const no = run('-w', '-d', other)
+  assert.equal(no.status, 3)
+  assert.match(no.stderr, /does not trust/)
+  assert.equal(run('-w', '-d', trusted).status, 0)
+  assert.equal(run('-w', '-d', nested).status, 0) // trust covers subfolders
+  assert.equal(run('-d', other).status, 0) // headless never asks
+  fs.writeFileSync(settings, 'not json')
+  assert.equal(run('-w', '-d', other).status, 0) // unreadable settings do not block
+})
+
+test('agy-image.sh checks its arguments before starting anything', async () => {
+  const { spawnSync } = await import('node:child_process')
+  const script = new URL('./agy-image.sh', import.meta.url).pathname
+  const none = spawnSync('bash', [script], { encoding: 'utf8' })
+  assert.equal(none.status, 2)
+  assert.match(none.stderr, /description/)
+  const badModel = spawnSync('bash', [script, '-m', 'x;rm -rf /', 'a cat'], { encoding: 'utf8' })
+  assert.equal(badModel.status, 2)
+  assert.match(badModel.stderr, /invalid model name/)
+  const badTime = spawnSync('bash', [script, '-t', 'soon', 'a cat'], { encoding: 'utf8' })
+  assert.equal(badTime.status, 2)
+})
+
+test('codex-agent.sh checks its arguments and offers no dangerous sandbox', async () => {
+  const { spawnSync } = await import('node:child_process')
+  const script = new URL('./codex-agent.sh', import.meta.url).pathname
+  const run = (...a) => spawnSync('bash', [script, ...a], { encoding: 'utf8' })
+  assert.equal(run().status, 2)
+  assert.match(run().stderr, /give the task/)
+  const danger = run('-s', 'danger-full-access', 'x')
+  assert.equal(danger.status, 2)
+  assert.match(danger.stderr, /invalid sandbox/)
+  assert.equal(run('-m', 'x;rm -rf /', 'x').status, 2)
+  assert.equal(run('-t', 'soon', 'x').status, 2)
+  assert.equal(run('-d', '/no/such/folder', 'x').status, 2)
+})
