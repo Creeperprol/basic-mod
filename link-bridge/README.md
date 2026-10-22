@@ -1,6 +1,6 @@
-# Agent Link bridge (link-bridge)
+# AI Link bridge (link-bridge)
 
-The cross-CLI half of Agent Link: works with any MCP-capable CLI. The Claude Code half is the `session-link` plugin.
+The cross-CLI half of AI Link: works with any MCP-capable CLI. The Claude Code half is the `session-link` plugin.
 
 A tiny MCP server (no dependencies, Node 18+) that lets coding-agent sessions on one machine — Claude Code, Codex, Qwen Code, anything that speaks MCP — find and message each other, and lets one session host and hand out work.
 
