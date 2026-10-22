@@ -11,7 +11,9 @@ const HOME = process.env.LINK_HOME || path.join(os.homedir(), '.session-link')
 const CLI = process.env.LINK_CLI || 'agent'
 const CWD = process.cwd()
 const ID = crypto.randomUUID()
-const NAME0 = process.env.LINK_NAME || `${CLI}-${path.basename(CWD) || 'root'}-${ID.slice(0, 4)}`
+// A home folder is called "home" so a user name never becomes part of a session name.
+const FOLDER = CWD === os.homedir() ? 'home' : path.basename(CWD) || 'root'
+const NAME0 = process.env.LINK_NAME || `${CLI}-${FOLDER}-${ID.slice(0, 4)}`
 const STALE_MS = 60_000
 const BEAT_MS = 10_000
 
