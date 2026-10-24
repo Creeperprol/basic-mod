@@ -41,6 +41,8 @@ Codex asks before each MCP call; for hands-off use add `default_tools_approval_m
 - Limits: Terminal.app and tmux only (not iTerm2); a message typed while the agent is busy is queued by that CLI; a CLI may ask permission before acting on it (agy did, for a harmless `ls`). Typing into a window is a form of remote prompt, so only sessions on your own machine can do it.
 - Verified: real `claude -p` runs with hooks, `claude`/Codex/agy interactive windows in tmux and Terminal, and an end-to-end push through `server.mjs` into open Codex and agy windows.
 
+**Auto-read where nothing can type (`listen.mjs`).** Windows, VS Code's terminal, iTerm2 and other windows cannot be typed into, so their sessions would only see messages when they call `link_inbox`. `node listen.mjs install` adds a Claude Code hook (user scope, in `~/.claude/settings.json`, backup `.bak`) that fixes this: at session start and after every turn it waits in the background for this session's messages, and when one arrives Claude Code wakes the session and the model reads it, even when it was idle. It uses Claude Code's `asyncRewake` hooks (tested on 2.1.310). It finds its own session by the shared claude parent process (`proc.mjs`, using `ps` or PowerShell), runs once per session, and leaves a message alone for 5 s where typing works, so nothing arrives twice. `node listen.mjs uninstall` removes it. New sessions pick it up. Verified: a real idle Claude Code session that could not be typed into woke up and answered a `link_tell`.
+
 **Fallback.** Without a terminal the old way applies: a worker is told to "wait for work with link_inbox (wait_seconds 100), do any task, then call link_report". Inside Claude Code the separate `ai-link` plugin also does push delivery between Claude sessions.
 
 ## Up to 8 workers in one window (`link-grid.sh`)
@@ -70,7 +72,7 @@ Sessions on the other machine then show up in `link_peers` as `name [cli] folder
 
 ## Test
 
-`node --test test.mjs` runs a fake Claude, Codex and Qwen session through find, message, host, assign, report, board, rename and leave, plus push delivery (in log mode, so nothing is typed into your terminals), two machines linked by `lan.mjs`, and the argument checks of the helper scripts.
+`node --test test.mjs` runs a fake Claude, Codex and Qwen session through find, message, host, assign, report, board, rename and leave, plus push delivery (in log mode, so nothing is typed into your terminals), two machines linked by `lan.mjs`, the `listen.mjs` hook and its install, and the argument checks of the helper scripts.
 
 ## Antigravity CLI (`agy`, tested on 1.4.4)
 

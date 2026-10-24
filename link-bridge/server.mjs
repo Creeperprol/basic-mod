@@ -8,6 +8,7 @@ import os from 'node:os'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { execFile, execFileSync } from 'node:child_process'
+import { ancestors } from './proc.mjs'
 
 const HOME = process.env.LINK_HOME || path.join(os.homedir(), '.session-link')
 const CLI = process.env.LINK_CLI || 'agent'
@@ -64,7 +65,9 @@ const alive = pid => {
 }
 
 // ---------- presence ----------
-const beat = () => writeJson(dir('peers', `${ID}.json`), { id: ID, name: myName, cli: CLI, cwd: CWD, pid: process.pid, tty: myTty, pane: PANE, seen: Date.now() })
+// chain: this server's parent processes, so listen.mjs (a Claude Code hook) can find the session of its own window.
+let myChain = []
+const beat = () => writeJson(dir('peers', `${ID}.json`), { id: ID, name: myName, cli: CLI, cwd: CWD, pid: process.pid, chain: myChain, tty: myTty, pane: PANE, seen: Date.now() })
 
 const peers = ({ includeSelf = false } = {}) => {
   const out = []
@@ -412,6 +415,10 @@ process.on('SIGINT', bye)
 process.on('SIGTERM', bye)
 
 beat()
+ancestors(process.pid).then(c => {
+  myChain = c
+  beat()
+}).catch(() => {})
 setInterval(() => {
   beat()
   applyRenames()

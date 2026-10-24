@@ -292,3 +292,54 @@ test('lan.mjs links two machines: peers, messages, tasks and results cross, unsi
     for (const d of daemons) d.kill('SIGTERM')
   }
 })
+
+test('listen.mjs (a Claude Code hook) hands a waiting message to the session of its own window and exits 2; install is reversible', async () => {
+  const { spawnSync } = await import('node:child_process')
+  const LISTEN = new URL('./listen.mjs', import.meta.url).pathname
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'listen-'))
+  // LINK_TTY '' : a window nothing can type into, like Windows Terminal.
+  const s = start('claude', 'win', { LINK_HOME: home, LINK_TTY: '' })
+  await s.init()
+  const me = await (async () => {
+    for (let i = 0; i < 50; i++) {
+      const f = fs.readdirSync(path.join(home, 'peers')).find(f => f.endsWith('.json'))
+      const p = f && JSON.parse(fs.readFileSync(path.join(home, 'peers', f), 'utf8'))
+      if (p?.chain?.length) return p
+      await new Promise(r => setTimeout(r, 200))
+    }
+    assert.fail('server never recorded its process chain')
+  })()
+  const hook = spawn('node', [LISTEN], { env: { ...process.env, LINK_HOME: home }, stdio: ['pipe', 'pipe', 'pipe'] })
+  hook.stdin.end('{}')
+  let err = ''
+  hook.stderr.on('data', d => (err += d))
+  const exited = new Promise(r => hook.on('exit', r))
+  await new Promise(r => setTimeout(r, 1500))
+  // a second hook (the next turn) leaves the waiting one alone
+  const second = spawnSync('node', [LISTEN], { env: { ...process.env, LINK_HOME: home }, input: '{}', encoding: 'utf8', timeout: 30_000 })
+  assert.equal(second.status, 0)
+  const box = path.join(home, 'inbox', me.id)
+  fs.mkdirSync(box, { recursive: true })
+  fs.writeFileSync(path.join(box, '1.json'), JSON.stringify({ kind: 'msg', from: 'x', fromName: 'boss@Peemai', at: Date.now(), text: 'hi there' }))
+  assert.equal(await exited, 2)
+  assert.match(err, /\[link MESSAGE from "boss@Peemai"\] hi there/)
+  assert.equal(fs.readdirSync(box).length, 0)
+  s.stop()
+
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'home-'))
+  fs.mkdirSync(path.join(fakeHome, '.claude'))
+  const settings = path.join(fakeHome, '.claude', 'settings.json')
+  fs.writeFileSync(settings, JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: 'command', command: 'echo mine' }] }] } }))
+  const env = { ...process.env, HOME: fakeHome, USERPROFILE: fakeHome }
+  assert.equal(spawnSync('node', [LISTEN, 'install'], { env }).status, 0)
+  assert.equal(spawnSync('node', [LISTEN, 'install'], { env }).status, 0) // twice: still one entry
+  let j = JSON.parse(fs.readFileSync(settings, 'utf8'))
+  for (const ev of ['SessionStart', 'Stop']) {
+    const ours = j.hooks[ev].flatMap(g => g.hooks).filter(h => h.command.includes('listen.mjs'))
+    assert.equal(ours.length, 1)
+    assert.equal(ours[0].asyncRewake, true)
+  }
+  assert.equal(spawnSync('node', [LISTEN, 'uninstall'], { env }).status, 0)
+  j = JSON.parse(fs.readFileSync(settings, 'utf8'))
+  assert.deepEqual(j, { hooks: { Stop: [{ hooks: [{ type: 'command', command: 'echo mine' }] }] } })
+})
