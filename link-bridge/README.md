@@ -41,7 +41,7 @@ Codex asks before each MCP call; for hands-off use add `default_tools_approval_m
 - Limits: Terminal.app and tmux only (not iTerm2); a message typed while the agent is busy is queued by that CLI; a CLI may ask permission before acting on it (agy did, for a harmless `ls`). Typing into a window is a form of remote prompt, so only sessions on your own machine can do it.
 - Verified: real `claude -p` runs with hooks, `claude`/Codex/agy interactive windows in tmux and Terminal, and an end-to-end push through `server.mjs` into open Codex and agy windows.
 
-**Fallback.** Without a terminal the old way applies: a worker is told to "wait for work with link_inbox (wait_seconds 100), do any task, then call link_report". Inside Claude Code the separate `ai-link` mod also does push delivery between Claude sessions.
+**Fallback.** Without a terminal the old way applies: a worker is told to "wait for work with link_inbox (wait_seconds 100), do any task, then call link_report". Inside Claude Code the separate `ai-link` plugin also does push delivery between Claude sessions.
 
 ## Up to 8 workers in one window (`link-grid.sh`)
 
@@ -56,6 +56,8 @@ node lan.mjs key            # first machine: makes a key and prints it
 node lan.mjs join <key>     # every other machine: saves the same key
 node lan.mjs                # every machine: run it and leave it open
 ```
+
+Setting up the second computer by hand is optional: paste the prompt in [`LAN-PROMPT.md`](LAN-PROMPT.md) into Claude Code there and it installs and starts everything.
 
 Sessions on the other machine then show up in `link_peers` as `name [cli] folder on <machine>`, and `link_tell`, `link_tellall`, `link_assign`, `link_report` and `link_rename` work across machines. A message from another machine is typed into the target session's own window like a local one, tagged with the sender's machine (`[link MESSAGE from "boss@Pauls-MacBook-Air"] ...`). Each machine keeps its own host: a host can hand tasks to workers on other machines, and the result marks the task done on its board.
 

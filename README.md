@@ -47,6 +47,7 @@ status_line = ["model-with-reasoning", "thread-name", "context-used", "five-hour
 
 ## Versions
 
+- **ai-link 1.2.1** — `link-bridge/LAN-PROMPT.md`: a prompt to paste into Claude Code on the second computer; it installs and starts the Wi-Fi link there.
 - **ai-link 1.2.0** — `link-bridge/lan.mjs` links sessions on two or more machines on the same Wi-Fi: run `node lan.mjs key` on one, `node lan.mjs join <key>` on the others, then `node lan.mjs` on each (see `link-bridge/README.md`).
 - **ai-link 1.1.1** — taken off the `claude-mods` marketplace; install from a clone (see Install). If you installed it from the marketplace: `/plugin uninstall ai-link@claude-mods` and `/plugin marketplace remove claude-mods`.
 - **ai-link 1.1.0** — renamed from `session-link` to `ai-link` (AI Link). If you installed the old name: `/plugin uninstall session-link@claude-mods`, then `/plugin install ai-link@claude-mods`.
