@@ -1,0 +1,1 @@
+{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"/Users/pauldenchat/link-bridge/wake-tests/inbox-hook.sh Stop","timeout":60}]}]}}

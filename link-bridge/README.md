@@ -1,6 +1,6 @@
 # AI Link bridge (link-bridge)
 
-The cross-CLI half of AI Link: works with any MCP-capable CLI. The Claude Code half is the `session-link` plugin.
+The cross-CLI half of AI Link: works with any MCP-capable CLI. The Claude Code half is the `session-link` mod.
 
 A tiny MCP server (no dependencies, Node 18+) that lets coding-agent sessions on one machine — Claude Code, Codex, Qwen Code, anything that speaks MCP — find and message each other, and lets one session host and hand out work.
 
@@ -34,11 +34,22 @@ Codex asks before each MCP call; for hands-off use add `default_tools_approval_m
 
 ## How a task reaches a worker
 
-Other CLIs cannot be pushed to: a message sits in the worker's inbox until it calls `link_inbox`. So a worker session needs to be told to check, for example "wait for work with link_inbox (wait_seconds 100), do any task, then call link_report". Inside Claude Code the separate `session-link` plugin does push delivery between Claude sessions.
+**Push delivery (default).** Each server registers its terminal (the agent's tty, or its tmux pane). When someone sends a message, task or result, the server also types it into the target's prompt as one line tagged `[link MESSAGE ...]`, `[link TASK t1 ...]` or `[link RESULT t1 ...]`: with `tmux send-keys` for a tmux pane, or with Terminal.app `do script` for a Terminal tab (macOS). The text goes first and Enter follows 1 second later, because Codex treats a fast Enter as part of a paste. If typing worked, the inbox copy is removed; if it did not (no terminal, other terminal app), the message stays in the inbox and `link_inbox` still returns it. A worker can call `link_report` for a task it only saw typed.
+
+- `LINK_WAKE=0` turns push delivery off (the tests do this); `LINK_WAKE_LOG=file` records what would be typed instead of typing it.
+- Codex starts MCP servers from its shared app-server, so they have no terminal. Pass `LINK_PANE` (and `LINK_NAME`) through `-c mcp_servers.link.env...`; `link-grid.sh` does this. `LINK_TTY` sets the Terminal tab explicitly.
+- Limits: Terminal.app and tmux only (not iTerm2); a message typed while the agent is busy is queued by that CLI; a CLI may ask permission before acting on it (agy did, for a harmless `ls`). Typing into a window is a form of remote prompt, so only sessions on your own machine can do it.
+- Verified: real `claude -p` runs with hooks, `claude`/Codex/agy interactive windows in tmux and Terminal, and an end-to-end push through `server.mjs` into open Codex and agy windows.
+
+**Fallback.** Without a terminal the old way applies: a worker is told to "wait for work with link_inbox (wait_seconds 100), do any task, then call link_report". Inside Claude Code the separate `session-link` mod also does push delivery between Claude sessions.
+
+## Up to 8 workers in one window (`link-grid.sh`)
+
+`./link-grid.sh -d <trusted folder> -n 8 -m mix` opens one tmux session split into up to 8 tiled panes, alternating Codex (read-only) and agy (`-m codex` or `-m agy` for one kind). Workers appear in `link_peers` as `codex-1`, `agy-2`, ... with their pane, so `link_assign` types the task straight into the pane. `-a` attaches; `tmux kill-session -t link-grid` stops them all. Needs `tmux`. Verified with 8 panes: all 8 registered, and a message typed into `codex-1` and `agy-2` arrived (Codex answered; agy asked for permission before replying).
 
 ## Test
 
-`node --test test.mjs` runs a fake Claude, Codex and Qwen session through find, message, host, assign, report, board, rename and leave.
+`node --test test.mjs` runs a fake Claude, Codex and Qwen session through find, message, host, assign, report, board, rename and leave, plus push delivery (in log mode, so nothing is typed into your terminals) and the argument checks of the helper scripts.
 
 ## Antigravity CLI (`agy`, tested on 1.4.4)
 
@@ -63,9 +74,16 @@ Things that bite:
 
 ## Codex as a one-shot agent (`codex-agent.sh`, tested on codex-cli 0.162.1)
 
-`./codex-agent.sh [-d dir] [-m model] [-s read-only|workspace-write] [-t seconds] [-o file] "the task"` runs `codex exec` for one task, prints its final message and lets it exit, the way a subagent would. Nothing stays running.
+`./codex-agent.sh [-d dir] [-m model] [-s read-only|workspace-write] [-t seconds] [-o file] [-i image]... "the task"` runs `codex exec` for one task, prints its final message and lets it exit, the way a subagent would. Nothing stays running.
+
+Pass `-i image.png` (repeatable) to let the headless agent see an image, e.g. a screenshot. Verified: a solid red PNG was described as "Red".
+
+Pass `-w` to open a Terminal window that shows the agent working live (its commands and reply stream in, then `[codex finished]`). Verified: the window showed the `ls` command and the answer.
 
 - **Safe by default:** read-only sandbox, no approval bypass, session not kept on disk (`--ephemeral`). `workspace-write` is opt-in with `-s`; `danger-full-access` and the bypass flags are deliberately not offered.
 - **Verified:** "17 times 23" returned `391` in 12 s; a request to create a file under read-only was refused by the sandbox and reported honestly (8 s, no file); under `workspace-write` the file was created (34 s).
 - **Persistent worker instead?** A Codex session that already has the `link` MCP server (see "Add it to each CLI") can be driven with `link_assign` / `link_inbox` like the other CLIs; use `codex-agent.sh` for fire-and-forget tasks.
 
+## Big grid: 12 workers plus one big Claude (`big-grid.sh`)
+
+`./big-grid.sh` opens one tmux window (session `link-grid`, needs `tmux`): the left 75% is a 3 x 4 grid (row 1 Codex `codex-1`..`codex-4`; row 2 Claude `claude-1`..`claude-4`; row 3 agy `agy-1`..`agy-4`) and the right 25% is one tall Claude, `claude-big`. Every pane registers with its tmux pane, so `link_tell` / `link_assign` type straight into it (a Codex or agy window opened as a plain Terminal tab has no pane and cannot be typed into). Attach with `tmux attach -t link-grid`; stop all 13 with `tmux kill-session -t link-grid`. Folder is `$HOME` and the Claude model is `sonnet`; edit `DIR` / `MODEL` at the top. Each session uses memory, so on an 8 GB Mac watch Memory Pressure. Codex and agy panes run with their approval and sandbox bypass flags, so only point `DIR` at a folder you trust.

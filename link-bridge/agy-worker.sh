@@ -57,7 +57,7 @@ if [ "$WINDOW" = 1 ] && ! trusted; then
   exit 3
 fi
 
-PROMPT="You are a worker in a multi-agent setup. Repeat this loop: call the link_inbox tool with wait_seconds 100. If it returns a TASK, do exactly what the task says, then call link_report with that task_id and a short result (what you did, what you verified, what you did not). If it returns an empty inbox twice in a row, reply with a single period and stop. Write no chat text between tool calls. ${EXTRA}"
+PROMPT="You are a worker in a multi-agent setup. Tasks arrive typed into your prompt as [link TASK <id> ...] lines. Do not poll or wait. When a TASK arrives, do exactly what it says, then call link_report with that task_id and a short result (what you did, what you verified, what you did not). Write no chat text. ${EXTRA}"
 
 if [ "$WINDOW" = 1 ]; then
   q() { printf "'%s'" "${1//\'/\'\\\'\'}"; }

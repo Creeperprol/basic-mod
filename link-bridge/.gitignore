@@ -1,0 +1,5 @@
+wake-tests/inbox/
+wake-tests/inbox2/
+wake-tests/watch.pid
+node_modules/
+.DS_Store

@@ -6,6 +6,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import crypto from 'node:crypto'
+import { execFile, execFileSync } from 'node:child_process'
 
 const HOME = process.env.LINK_HOME || path.join(os.homedir(), '.session-link')
 const CLI = process.env.LINK_CLI || 'agent'
@@ -15,12 +16,29 @@ const ID = crypto.randomUUID()
 const NAME0 = process.env.LINK_NAME || `${CLI}-${ID.slice(0, 4)}`
 const STALE_MS = 60_000
 const BEAT_MS = 10_000
+// Push delivery: instead of waiting for the agent to poll link_inbox, type the message into the target's terminal.
+// LINK_WAKE=0 turns it off; LINK_WAKE_LOG=<file> only records what would be typed (used by the tests).
+const WAKE = process.env.LINK_WAKE !== '0'
+const WAKE_LOG = process.env.LINK_WAKE_LOG || ''
+const WAKE_GAP_MS = Number(process.env.LINK_WAKE_GAP_MS) || 1000 // text first, Enter a moment later: Codex treats fast Enter as part of a paste
+// Codex starts MCP servers from its shared app-server daemon: no terminal and no TMUX_PANE, so link-grid.sh passes LINK_PANE explicitly.
+const PANE = process.env.LINK_PANE || process.env.TMUX_PANE || ''
+const myTty = process.env.LINK_TTY ?? (() => {
+  try {
+    const t = execFileSync('ps', ['-o', 'tty=', '-p', String(process.ppid)], { encoding: 'utf8' }).trim()
+    return t && !t.startsWith('?') ? t.replace(/^\/dev\//, '') : ''
+  } catch {
+    return ''
+  }
+})()
 
 const dir = (...p) => path.join(HOME, ...p)
 for (const d of ['peers', 'inbox', 'tasks']) fs.mkdirSync(dir(d), { recursive: true })
 
 let myName = NAME0
 const received = new Map() // task id -> { hostId, hostName }
+
+const sleep = ms => new Promise(r => setTimeout(r, ms))
 
 // ---------- files ----------
 const writeJson = (file, value) => {
@@ -45,7 +63,7 @@ const alive = pid => {
 }
 
 // ---------- presence ----------
-const beat = () => writeJson(dir('peers', `${ID}.json`), { id: ID, name: myName, cli: CLI, cwd: CWD, pid: process.pid, seen: Date.now() })
+const beat = () => writeJson(dir('peers', `${ID}.json`), { id: ID, name: myName, cli: CLI, cwd: CWD, pid: process.pid, tty: myTty, pane: PANE, seen: Date.now() })
 
 const peers = ({ includeSelf = false } = {}) => {
   const out = []
@@ -82,7 +100,68 @@ const send = (to, kind, body) => {
   const box = dir('inbox', to)
   fs.mkdirSync(box, { recursive: true })
   const file = path.join(box, `${Date.now()}-${crypto.randomBytes(3).toString('hex')}.json`)
-  writeJson(file, { kind, from: ID, fromName: myName, at: Date.now(), ...body })
+  const msg = { kind, from: ID, fromName: myName, at: Date.now(), ...body }
+  writeJson(file, msg)
+  if (kind !== 'rename') wake(to, msg, file)
+}
+
+// ---------- push delivery ----------
+const oneLine = t => String(t).replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 1500)
+const typed = m => {
+  if (m.kind === 'task') return `[link TASK ${m.taskId} from host "${m.fromName}"] ${oneLine(m.text)} (When finished, call link_report with task_id "${m.taskId}" and a short result.)`
+  if (m.kind === 'result') return `[link RESULT ${m.taskId} from "${m.fromName}"] ${oneLine(m.text)}`
+  return `[link MESSAGE from "${m.fromName}"] ${oneLine(m.text)}`
+}
+const run = (cmd, args) => new Promise(resolve => execFile(cmd, args, { timeout: 15_000 }, (err, out) => resolve(err ? '' : String(out).trim())))
+const OSA = `on run argv
+  set theTTY to item 1 of argv
+  set theText to item 2 of argv
+  set theGap to (item 3 of argv) as real
+  tell application "Terminal"
+    repeat with w in windows
+      repeat with t in tabs of w
+        if tty of t is theTTY then
+          do script theText in t
+          delay theGap
+          do script "" in t
+          return "ok"
+        end if
+      end repeat
+    end repeat
+  end tell
+  return "nomatch"
+end run`
+// Returns true when the text was typed into the target's prompt (tmux pane or macOS Terminal tab).
+const typeInto = async (peer, line) => {
+  if (WAKE_LOG) {
+    fs.appendFileSync(WAKE_LOG, JSON.stringify({ to: peer.name, tty: peer.tty, pane: peer.pane, line }) + '\n')
+    return true
+  }
+  if (peer.pane) {
+    const a = await run('tmux', ['send-keys', '-t', peer.pane, '-l', '--', line])
+    if (a === '') {
+      await sleep(WAKE_GAP_MS)
+      return (await run('tmux', ['send-keys', '-t', peer.pane, 'Enter'])) === ''
+    }
+  }
+  if (peer.tty && process.platform === 'darwin') {
+    return (await run('osascript', ['-e', OSA, `/dev/${peer.tty}`, line, String(WAKE_GAP_MS / 1000)])) === 'ok'
+  }
+  return false
+}
+const chains = new Map() // one delivery at a time per target so two messages never interleave
+const wake = (to, msg, file) => {
+  if (!WAKE) return
+  const peer = readJson(dir('peers', `${to}.json`))
+  if (!peer || (!peer.pane && !peer.tty) || (peer.tty && peer.tty === myTty && !peer.pane)) return
+  const prev = chains.get(to) || Promise.resolve()
+  const next = prev
+    .then(async () => {
+      // Delivered by typing: drop the inbox copy so the agent does not see it twice. If typing failed, link_inbox still has it.
+      if (await typeInto(peer, typed(msg))) fs.rmSync(file, { force: true })
+    })
+    .catch(() => {})
+  chains.set(to, next)
 }
 
 const takeInbox = () => {
@@ -117,6 +196,16 @@ const applyRenames = () => {
 }
 
 const tasksFile = hostId => dir('tasks', `${hostId}.json`)
+// A task typed into the prompt never went through link_inbox, so find its host from the host's task board.
+const findTask = id => {
+  for (const f of fs.readdirSync(dir('tasks'))) {
+    if (!f.endsWith('.json')) continue
+    const hostId = f.slice(0, -5)
+    const t = (readJson(dir('tasks', f), []) || []).find(x => x.id === id && x.toId === ID)
+    if (t) return { hostId, hostName: readJson(dir('peers', `${hostId}.json`))?.name || 'host' }
+  }
+  return null
+}
 const loadTasks = hostId => readJson(tasksFile(hostId), [])
 
 const show = m => {
@@ -133,15 +222,14 @@ const TOOLS = [
   { name: 'link_peers', description: 'List the other running agent sessions (Claude Code, Codex, Qwen, ...) you can message.', inputSchema: { type: 'object', properties: {} } },
   { name: 'link_tell', description: 'Send a message to one other session, by name or id prefix.', inputSchema: { type: 'object', properties: { to: { type: 'string' }, text: { type: 'string' } }, required: ['to', 'text'] } },
   { name: 'link_tellall', description: 'Send a message to every other session.', inputSchema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] } },
-  { name: 'link_inbox', description: 'Read and clear messages, tasks and results sent to this session. Call it at the start of your work and whenever you are idle. wait_seconds (max 120) waits for something to arrive.', inputSchema: { type: 'object', properties: { wait_seconds: { type: 'number' } } } },
+  { name: 'link_inbox', description: 'Fallback only: messages, tasks and results are normally typed into your prompt as [link ...] lines. Reads and clears anything that could not be typed. wait_seconds (max 120) waits for something to arrive.', inputSchema: { type: 'object', properties: { wait_seconds: { type: 'number' } } } },
   { name: 'link_host', description: 'Make this session the host that hands out work (on: true), or stop hosting (on: false).', inputSchema: { type: 'object', properties: { on: { type: 'boolean' } } } },
-  { name: 'link_assign', description: 'Host only. Give a task to a worker session by name, or "all". Results come back through link_inbox / link_board.', inputSchema: { type: 'object', properties: { worker: { type: 'string' }, task: { type: 'string' } }, required: ['worker', 'task'] } },
+  { name: 'link_assign', description: 'Host only. Give a task to a worker session by name, or "all". Results are typed into your prompt as [link RESULT ...] lines and shown by link_board.', inputSchema: { type: 'object', properties: { worker: { type: 'string' }, task: { type: 'string' } }, required: ['worker', 'task'] } },
   { name: 'link_report', description: 'Worker only. Send the result of an assigned task back to the host.', inputSchema: { type: 'object', properties: { task_id: { type: 'string' }, result: { type: 'string' } }, required: ['task_id', 'result'] } },
   { name: 'link_board', description: 'Host only. Show the task board; clear: true drops finished tasks.', inputSchema: { type: 'object', properties: { clear: { type: 'boolean' } } } },
   { name: 'link_rename', description: 'Host only. Rename a worker session as listed by link_peers.', inputSchema: { type: 'object', properties: { worker: { type: 'string' }, name: { type: 'string' } }, required: ['worker', 'name'] } },
 ]
 
-const sleep = ms => new Promise(r => setTimeout(r, ms))
 const ok = text => ({ content: [{ type: 'text', text }] })
 const fail = text => ({ content: [{ type: 'text', text }], isError: true })
 
@@ -204,8 +292,8 @@ const call = async (name, a) => {
       return ok(out.join('\n'))
     }
     case 'link_report': {
-      const t = received.get(String(a.task_id))
-      if (!t) return fail(`No task ${a.task_id} was assigned to this session (call link_inbox to receive tasks first).`)
+      const t = received.get(String(a.task_id)) || findTask(String(a.task_id))
+      if (!t) return fail(`No task ${a.task_id} was assigned to this session.`)
       const tasks = loadTasks(t.hostId).map(x => (x.id === a.task_id ? { ...x, status: 'done', result: String(a.result).slice(0, 2000) } : x))
       writeJson(tasksFile(t.hostId), tasks)
       send(t.hostId, 'result', { taskId: String(a.task_id), text: String(a.result) })
@@ -236,7 +324,7 @@ const call = async (name, a) => {
 }
 
 // ---------- MCP over stdio ----------
-const INSTRUCTIONS = `You can message other coding-agent sessions on this machine. Call link_peers to see them, link_tell to message one, and link_inbox to read what was sent to you (call it at the start of your work and when idle). One session can call link_host and then link_assign tasks; a worker answers with link_report.`
+const INSTRUCTIONS = `You can message other coding-agent sessions on this machine. Call link_peers to see them, link_tell to message one, and messages, tasks and results sent to you are typed into your prompt automatically (tagged [link ...]); link_inbox is only a fallback for anything that could not be typed. One session can call link_host and then link_assign tasks; a worker answers with link_report.`
 
 const reply = (id, result) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id, result }) + '\n')
 const error = (id, code, message) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id, error: { code, message } }) + '\n')
