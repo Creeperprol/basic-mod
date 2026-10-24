@@ -269,8 +269,17 @@ const fail = text => ({ content: [{ type: 'text', text }], isError: true })
 
 const listWith = list => (list.length ? list.map(p => `${p.name}  [${p.cli}]  ${path.basename(p.cwd)}${p.remote ? `  on ${p.machine}` : ''}  (${p.id.slice(0, 8)})`).join('\n') : 'No other sessions running.')
 
+// A required argument that is missing or empty is refused, so a model that misnames one ("message" for "text")
+// gets told and retries, instead of the other session receiving the word "undefined".
+const missing = (name, a) => {
+  const tool = TOOLS.find(t => t.name === name)
+  return (tool?.inputSchema.required || []).filter(k => a[k] === undefined || a[k] === null || String(a[k]).trim() === '')
+}
+
 const call = async (name, a) => {
   applyRenames()
+  const gone = missing(name, a)
+  if (gone.length) return fail(`${name} needs ${gone.map(k => `"${k}"`).join(' and ')} (got ${Object.keys(a).map(k => `"${k}"`).join(', ') || 'no arguments'}).`)
   switch (name) {
     case 'link_peers': {
       const h = hostRecord()

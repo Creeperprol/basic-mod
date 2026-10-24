@@ -62,6 +62,12 @@ test('sessions of different CLIs find each other, hand out work and report back'
   assert.match((await codex.tool('link_inbox')).text, /MESSAGE from "boss":\nhello there/)
   assert.match((await codex.tool('link_inbox')).text, /empty/)
 
+  // a missing or misnamed required argument is refused, never sent as "undefined"
+  const bad = await host.tool('link_tell', { to: 'coder', message: 'hi' })
+  assert.equal(bad.isError, true)
+  assert.match(bad.text, /link_tell needs "text" \(got "to", "message"\)/)
+  assert.match((await codex.tool('link_inbox')).text, /empty/)
+
   // only the host may assign
   assert.equal((await codex.tool('link_assign', { worker: 'all', task: 'x' })).isError, true)
   assert.match((await host.tool('link_host')).text, /boss is the host/)

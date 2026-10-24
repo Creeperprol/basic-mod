@@ -47,6 +47,7 @@ status_line = ["model-with-reasoning", "thread-name", "context-used", "five-hour
 
 ## Versions
 
+- **ai-link 1.3.1** — link-bridge refuses a tool call with a missing required argument (a reply arrived as "undefined").
 - **ai-link 1.3.0** — `link-bridge/listen.mjs`: `node listen.mjs install` adds a Claude Code hook so sessions read link messages by themselves where nothing can type into the window (Windows Terminal, VS Code, iTerm2).
 - **ai-link 1.2.1** — `link-bridge/LAN-PROMPT.md`: a prompt to paste into Claude Code on the second computer; it installs and starts the Wi-Fi link there.
 - **ai-link 1.2.0** — `link-bridge/lan.mjs` links sessions on two or more machines on the same Wi-Fi: run `node lan.mjs key` on one, `node lan.mjs join <key>` on the others, then `node lan.mjs` on each (see `link-bridge/README.md`).
