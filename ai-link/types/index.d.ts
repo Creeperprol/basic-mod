@@ -28,7 +28,7 @@ export type Snap = {
 
 declare module 'claude-code' {
   interface PluginState {
-    'session-link': {
+    'ai-link': {
       // session messaging and host mode
       log: Msg[]
       me: Me | null

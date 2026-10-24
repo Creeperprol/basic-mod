@@ -4,22 +4,22 @@ import type { Register } from 'claude-code'
 import type { Inbox, Me, Msg, Role, Snap, Task } from '../types'
 
 
-const PANE = 'session-link'
-const log = atom({ plugin: 'session-link', key: 'log' } as const, [])
-const me = atom({ plugin: 'session-link', key: 'me' } as const, null)
-const role = atom({ plugin: 'session-link', key: 'role' } as const, 'solo')
-const tasks = atom({ plugin: 'session-link', key: 'tasks' } as const, [])
-const inbox = atom({ plugin: 'session-link', key: 'inbox' } as const, [])
-const target = atom({ plugin: 'session-link', key: 'target' } as const, 'all')
+const PANE = 'ai-link'
+const log = atom({ plugin: 'ai-link', key: 'log' } as const, [])
+const me = atom({ plugin: 'ai-link', key: 'me' } as const, null)
+const role = atom({ plugin: 'ai-link', key: 'role' } as const, 'solo')
+const tasks = atom({ plugin: 'ai-link', key: 'tasks' } as const, [])
+const inbox = atom({ plugin: 'ai-link', key: 'inbox' } as const, [])
+const target = atom({ plugin: 'ai-link', key: 'target' } as const, 'all')
 
-const T_ASSIGN = 'mcp__session-link__assign'
-const T_REPORT = 'mcp__session-link__report'
-const T_PEERS = 'mcp__session-link__peers'
+const T_ASSIGN = 'mcp__ai-link__assign'
+const T_REPORT = 'mcp__ai-link__report'
+const T_PEERS = 'mcp__ai-link__peers'
 // What the host's model is told about running workers (added to its system prompt while it is the host).
 const HOST_WORKFLOW = `You are the host of a multi-window setup: other Claude sessions (workers) take tasks you give them with the assign tool and answer with a short report. Run it like this. 1) Contract first: before assigning, write the shared contract (file ownership per worker, data shapes, function signatures, constants in one place). 2) Self-contained tasks: name the files the worker may edit, the contract to read, and the exact done-when check (a command that must pass). Workers already work silently, so do not ask them to chat. 3) Share work evenly: size each task (S one small file, M one module, L several modules), give it to the least-loaded idle worker (assign with worker "auto" does this), never queue two tasks on one worker while another is idle, split a lopsided big task by file ownership, and tell the person the split in one table (worker, task, size). Use worker "all" only for tasks that are truly identical. 4) Never trust a report alone: re-run the tests yourself, run an end-to-end check, look at real output, and say what was verified for real and what was not. 5) Diagnose first: reproduce a problem, find the cause, then send the owning worker a precise task with the repro; do not edit a worker's files while it may be editing them. 6) Watch worker context: a report saying NEEDS COMPACT or ctx ~100k or more means send that worker only small tasks and tell the person to run /compact in its window. 7) Use worker names exactly as peers lists them; if assign says no session matches, call peers again. Deploy or publish only when the person asked, after the checks pass.`
 
-const T_RENAME = 'mcp__session-link__rename'
-const T_COMMAND = 'mcp__session-link__command'
+const T_RENAME = 'mcp__ai-link__rename'
+const T_COMMAND = 'mcp__ai-link__command'
 
 type Peer = { id: string; name: string; cwd: string; seen: number }
 
@@ -222,11 +222,11 @@ async function assign($: any, who: Me, p: Peer, text: string): Promise<string | 
 
 // ---- usage pane: helpers ----
 const USAGE_PANE = 'usage-bar'
-const snap = atom({ plugin: 'session-link', key: 'snap' } as const, null)
-const showTools = atom({ plugin: 'session-link', key: 'showTools' } as const, true)
-const showWhere = atom({ plugin: 'session-link', key: 'showWhere' } as const, true)
-const title = atom({ plugin: 'session-link', key: 'title' } as const, '')
-const effort = atom({ plugin: 'session-link', key: 'effort' } as const, '')
+const snap = atom({ plugin: 'ai-link', key: 'snap' } as const, null)
+const showTools = atom({ plugin: 'ai-link', key: 'showTools' } as const, true)
+const showWhere = atom({ plugin: 'ai-link', key: 'showWhere' } as const, true)
+const title = atom({ plugin: 'ai-link', key: 'title' } as const, '')
+const effort = atom({ plugin: 'ai-link', key: 'effort' } as const, '')
 
 const EFFORT_COLOR: Record<string, string> = { low: 'blue', medium: 'cyan', high: 'green', xhigh: 'magenta', max: 'red' }
 
@@ -361,7 +361,7 @@ export const register: Register = (on, options) => {
         refused.push(`/${name}`)
       }
     }
-    if (refused.length) $.ui.toast(`session-link: could not register ${refused.join(', ')} (name taken)`)
+    if (refused.length) $.ui.toast(`ai-link: could not register ${refused.join(', ')} (name taken)`)
     try {
     await $.tool.register({
       name: 'assign',
@@ -401,7 +401,7 @@ export const register: Register = (on, options) => {
     })
     await $.tool.register({ name: 'peers', description: 'List the other running Claude Code sessions you can message.' })
     } catch (err) {
-      $.ui.toast('session-link: could not register its tools')
+      $.ui.toast('ai-link: could not register its tools')
     }
     void $.ui.open({ id: PANE, title: 'Sessions' })
     await usageStart($, options.autoOpen !== false)
@@ -599,7 +599,7 @@ export const register: Register = (on, options) => {
     const r = await next(e)
     try {
       const quiet = Boolean(await $.store.get(`quiet:${await $.session.id()}`))
-      if (await isHost($, await read($, me))) return { sections: [...r.sections, { id: 'session-link:host-workflow', scope: 'session' as const, text: HOST_WORKFLOW }] }
+      if (await isHost($, await read($, me))) return { sections: [...r.sections, { id: 'ai-link:host-workflow', scope: 'session' as const, text: HOST_WORKFLOW }] }
       if ((await read($, inbox)).length === 0 && !quiet) return r
     } catch {
       return r
@@ -608,7 +608,7 @@ export const register: Register = (on, options) => {
       sections: [
         ...r.sections,
         {
-          id: 'session-link:silent-worker',
+          id: 'ai-link:silent-worker',
           scope: 'session' as const,
           text: `You are a worker in a multi-window setup and a host session has given you a task. Do only that task. Write no chat text between tool calls and no summary or thanks at the end: your only output is tool calls. Do not ask the user questions or offer next steps. When the work is done, call ${T_REPORT} once with the task_id and a short result (one or two sentences), then stop. Hook feedback that arrives after your report (a stop hook, a design or lint finding) is not a reason to write text: act on it with tool calls only, or ignore it, and never explain, triage or summarise it in chat. Put ctx ~NNk (your best estimate of your context size) in the report and add NEEDS COMPACT at about 100k or more. Read files in parts (grep first, then offset and limit), do not re-read what you just edited, and edit only the files your task names. Never write a closing line such as "Task X is done", "Nothing is left to do", "Idle" or a restatement of your report: the report call already said it. If the harness forces you to write something after the report, write exactly one period (.) and nothing else. This holds until the person next types in this session.`,
         },
@@ -774,7 +774,7 @@ export const register: Register = (on, options) => {
       now = await $.clock.now()
       list = await listPeers($, who ? who.id : '')
     } catch (err) {
-      return <Text color="red">session-link error: {String(err)}</Text>
+      return <Text color="red">ai-link error: {String(err)}</Text>
     }
 
     return (

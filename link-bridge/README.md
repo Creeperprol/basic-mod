@@ -1,6 +1,6 @@
 # AI Link bridge (link-bridge)
 
-The cross-CLI half of AI Link: works with any MCP-capable CLI. The Claude Code half is the `session-link` mod.
+The cross-CLI half of AI Link: works with any MCP-capable CLI. The Claude Code half is the `ai-link` mod.
 
 A tiny MCP server (no dependencies, Node 18+) that lets coding-agent sessions on one machine — Claude Code, Codex, Qwen Code, anything that speaks MCP — find and message each other, and lets one session host and hand out work.
 
@@ -41,7 +41,7 @@ Codex asks before each MCP call; for hands-off use add `default_tools_approval_m
 - Limits: Terminal.app and tmux only (not iTerm2); a message typed while the agent is busy is queued by that CLI; a CLI may ask permission before acting on it (agy did, for a harmless `ls`). Typing into a window is a form of remote prompt, so only sessions on your own machine can do it.
 - Verified: real `claude -p` runs with hooks, `claude`/Codex/agy interactive windows in tmux and Terminal, and an end-to-end push through `server.mjs` into open Codex and agy windows.
 
-**Fallback.** Without a terminal the old way applies: a worker is told to "wait for work with link_inbox (wait_seconds 100), do any task, then call link_report". Inside Claude Code the separate `session-link` mod also does push delivery between Claude sessions.
+**Fallback.** Without a terminal the old way applies: a worker is told to "wait for work with link_inbox (wait_seconds 100), do any task, then call link_report". Inside Claude Code the separate `ai-link` mod also does push delivery between Claude sessions.
 
 ## Up to 8 workers in one window (`link-grid.sh`)
 

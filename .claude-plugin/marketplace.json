@@ -2,6 +2,6 @@
   "name": "claude-mods",
   "owner": { "name": "Creeperprol" },
   "plugins": [
-    { "name": "session-link", "source": "./session-link", "description": "Usage side pane (context, limits, cost, tools) plus session link: sessions message each other, one can host and hand out work" }
+    { "name": "ai-link", "source": "./ai-link", "description": "Usage side pane (context, limits, cost, tools) plus session link: sessions message each other, one can host and hand out work" }
   ]
 }

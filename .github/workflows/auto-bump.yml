@@ -5,8 +5,8 @@ on:
   push:
     branches: [main]
     paths:
-      - 'session-link/hooks/**'
-      - 'session-link/types/**'
+      - 'ai-link/hooks/**'
+      - 'ai-link/types/**'
   workflow_dispatch:
 
 permissions:
@@ -23,7 +23,7 @@ jobs:
 
       - name: Bump patch version
         run: |
-          file='session-link/.claude-plugin/plugin.json'
+          file='ai-link/.claude-plugin/plugin.json'
           # A push that already edits the version (a manual bump) is left alone.
           if [ "${{ github.event_name }}" = "push" ] && git diff --name-only HEAD~1 HEAD | grep -qx "$file"; then
             echo "version already changed in this push; skipping"

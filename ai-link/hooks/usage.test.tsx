@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 
 import { stand } from './kit'
 
-const PANE = { plugin: 'session-link', component: 'Pane', requestId: 'usage-bar', props: { bodyColumns: 30 } } as const
+const PANE = { plugin: 'ai-link', component: 'Pane', requestId: 'usage-bar', props: { bodyColumns: 30 } } as const
 
 test('auto-opens the pane at session start by default', async ($, on) => {
   const opened: string[] = []

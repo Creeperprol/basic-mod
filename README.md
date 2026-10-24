@@ -1,13 +1,13 @@
 # claude-mods
 
-- `session-link`: a Claude Code mod (a plugin of function hooks) with two side panes.
-- `link-bridge`: a small MCP server so Claude Code, Codex, Qwen Code and the Antigravity CLI (`agy`) sessions can message each other and hand out work (see `link-bridge/README.md`). It is the cross-CLI half of AI Link; the `session-link` mod is the Claude Code half. One-shot helpers there let Claude use `agy` (`agy-worker.sh`, `agy-image.sh`) and Codex (`codex-agent.sh`, read-only by default) as agents; `link-grid.sh` and `big-grid.sh` open many workers in one tmux window, and messages are typed straight into their panes.
+- `ai-link` (AI Link, formerly `session-link`): a Claude Code mod (a plugin of function hooks) with two side panes.
+- `link-bridge`: a small MCP server so Claude Code, Codex, Qwen Code and the Antigravity CLI (`agy`) sessions can message each other and hand out work (see `link-bridge/README.md`). It is the cross-CLI half of AI Link; the `ai-link` mod is the Claude Code half. One-shot helpers there let Claude use `agy` (`agy-worker.sh`, `agy-image.sh`) and Codex (`codex-agent.sh`, read-only by default) as agents; `link-grid.sh` and `big-grid.sh` open many workers in one tmux window, and messages are typed straight into their panes.
 
 ## Install
 
 ```
 /plugin marketplace add Creeperprol/basic-mod
-/plugin install session-link@claude-mods
+/plugin install ai-link@claude-mods
 ```
 
 ## Usage pane
@@ -27,7 +27,7 @@ Lets your sessions on one machine find and message each other, and lets one act 
 - "Auto-run tasks from the host" is off by default. When on, a task starts a turn in that session immediately, so only enable it for sessions you trust.
 - A worker only accepts tasks and renames from the session registered as host. Sessions share a list through the plugin's own store file under `~/.claude`.
 
-Tests: `claude plugin test session-link`.
+Tests: `claude plugin test ai-link`.
 
 ## Codex
 
@@ -42,6 +42,8 @@ status_line = ["model-with-reasoning", "thread-name", "context-used", "five-hour
 ```
 
 ## Versions
+
+- **ai-link 1.1.0** — renamed from `session-link` to `ai-link` (AI Link). If you installed the old name: `/plugin uninstall session-link@claude-mods`, then `/plugin install ai-link@claude-mods`.
 
 - **session-link 0.2.1** — `/clear` no longer drops the session name or the host role: the new session picks them up from the one it replaced.
 - **session-link 0.2.0** — usage and session link merged into one plugin; host mode (`/host`, `/assign`, `/board`, `/setname`, a prompt box); usage pane shows effort, session name and tools; opens on your first prompt so it seats from 110 columns; Windows paths handled.
