@@ -47,9 +47,28 @@ Codex asks before each MCP call; for hands-off use add `default_tools_approval_m
 
 `./link-grid.sh -d <trusted folder> -n 8 -m mix` opens one tmux session split into up to 8 tiled panes, alternating Codex (read-only) and agy (`-m codex` or `-m agy` for one kind). Workers appear in `link_peers` as `codex-1`, `agy-2`, ... with their pane, so `link_assign` types the task straight into the pane. `-a` attaches; `tmux kill-session -t link-grid` stops them all. Needs `tmux`. Verified with 8 panes: all 8 registered, and a message typed into `codex-1` and `agy-2` arrived (Codex answered; agy asked for permission before replying).
 
+## Two machines on the same Wi-Fi (`lan.mjs`)
+
+`lan.mjs` links the sessions of several machines on one network, so a Claude Code on one Mac can message, host or take tasks from a Claude Code (or Codex, agy, ...) on another. Run one per machine, next to the sessions that already have the `link` MCP server:
+
+```
+node lan.mjs key            # first machine: makes a key and prints it
+node lan.mjs join <key>     # every other machine: saves the same key
+node lan.mjs                # every machine: run it and leave it open
+```
+
+Sessions on the other machine then show up in `link_peers` as `name [cli] folder on <machine>`, and `link_tell`, `link_tellall`, `link_assign`, `link_report` and `link_rename` work across machines. A message from another machine is typed into the target session's own window like a local one, tagged with the sender's machine (`[link MESSAGE from "boss@Pauls-MacBook-Air"] ...`). Each machine keeps its own host: a host can hand tasks to workers on other machines, and the result marks the task done on its board.
+
+- **How it works.** Every 3 s each machine broadcasts its live sessions over UDP (port 47811). Messages for a session on another machine are carried over HTTP (port 47812) and dropped into that session's inbox. The MCP server itself still never touches the network.
+- **Security.** Every packet is signed with the shared key (HMAC-SHA256), carries a timestamp and a one-time nonce, and anything unsigned, stale or replayed is refused. The key is in `~/.session-link/lan.key` (mode 600). Anyone with the key can type into your sessions, so share it only between your own machines, and do not run `lan.mjs` on a network you do not trust (traffic is signed, not encrypted).
+- **No broadcast?** Some Wi-Fi networks (guest, hotel, "client isolation") block it. Name the other machines directly: `LINK_LAN_PEERS=192.168.0.124 node lan.mjs` (comma-separated, `ip:udpPort` for a different port). Find a Mac's address with `ipconfig getifaddr en0`.
+- **Firewall.** If the macOS firewall is on, allow incoming connections for `node` when asked.
+- **Options.** `LINK_LAN_KEY` (instead of the key file), `LINK_LAN_UDP`, `LINK_LAN_HTTP`, `LINK_LAN_BROADCAST=0` (only `LINK_LAN_PEERS`).
+- **Verified:** the test runs two machines (two homes, two `lan.mjs`) and checks that peers appear on both sides, a message and a task cross, the result comes back to the host's board, and an unsigned packet is refused. Not yet run on two physical Macs.
+
 ## Test
 
-`node --test test.mjs` runs a fake Claude, Codex and Qwen session through find, message, host, assign, report, board, rename and leave, plus push delivery (in log mode, so nothing is typed into your terminals) and the argument checks of the helper scripts.
+`node --test test.mjs` runs a fake Claude, Codex and Qwen session through find, message, host, assign, report, board, rename and leave, plus push delivery (in log mode, so nothing is typed into your terminals), two machines linked by `lan.mjs`, and the argument checks of the helper scripts.
 
 ## Antigravity CLI (`agy`, tested on 1.4.4)
 

@@ -243,3 +243,52 @@ test('link-grid.sh allows 1 to 8 panes and checks its arguments before starting 
   assert.equal(await run(['-s', 'bad name']), 2)
   assert.equal(await run(['-d', '/no/such/folder']), 2)
 })
+
+test('lan.mjs links two machines: peers, messages, tasks and results cross, unsigned packets are refused', async () => {
+  const LAN = new URL('./lan.mjs', import.meta.url).pathname
+  const key = 'test-key-0123456789abcdef'
+  const homes = [fs.mkdtempSync(path.join(os.tmpdir(), 'lan-a-')), fs.mkdtempSync(path.join(os.tmpdir(), 'lan-b-'))]
+  const base = 47900 + Math.floor(Math.random() * 50) * 4
+  const [udpA, httpA, udpB, httpB] = [base, base + 1, base + 2, base + 3]
+  const lan = (home, udp, httpPort, other) =>
+    spawn('node', [LAN], { env: { ...process.env, LINK_HOME: home, LINK_LAN_KEY: key, LINK_LAN_UDP: String(udp), LINK_LAN_HTTP: String(httpPort), LINK_LAN_PEERS: `127.0.0.1:${other}`, LINK_LAN_BROADCAST: '0' }, stdio: 'ignore' })
+  const daemons = [lan(homes[0], udpA, httpA, udpB), lan(homes[1], udpB, httpB, udpA)]
+  const logs = homes.map(h => path.join(h, 'wake.log'))
+  // LINK_WAKE on with a log: what would be typed into each session's own window is recorded instead.
+  const session = (i, cli, name) => start(cli, name, { LINK_HOME: homes[i], LINK_WAKE: '1', LINK_WAKE_LOG: logs[i], LINK_TTY: `ttys9${i}` })
+  const boss = session(0, 'claude', 'boss')
+  const far = session(1, 'claude', 'far')
+  const until = async (fn, ms = 10_000) => {
+    const end = Date.now() + ms
+    for (;;) {
+      const v = await fn()
+      if (v) return v
+      if (Date.now() > end) assert.fail(`timed out: ${fn}`)
+      await new Promise(r => setTimeout(r, 200))
+    }
+  }
+  const logged = i => (fs.existsSync(logs[i]) ? fs.readFileSync(logs[i], 'utf8').trim().split('\n').map(l => JSON.parse(l).line).join('\n') : '')
+  try {
+    await boss.init()
+    await far.init()
+    await until(async () => / on /.test((await boss.tool('link_peers')).text) && /far/.test((await boss.tool('link_peers')).text))
+    await until(async () => /boss .* on /.test((await far.tool('link_peers')).text))
+
+    assert.match((await boss.tool('link_tell', { to: 'far', text: 'hello over wifi' })).text, /Sent to far/)
+    await until(() => /\[link MESSAGE from "boss@[^"]+"\] hello over wifi/.test(logged(1)))
+
+    await boss.tool('link_host')
+    assert.match((await boss.tool('link_assign', { worker: 'far', task: 'count to 3' })).text, /far/)
+    const id = (await until(() => /\[link TASK (t\w+) from host "boss@/.exec(logged(1))))[1]
+    assert.match((await far.tool('link_report', { task_id: id, result: '1 2 3' })).text, /sent to the host/)
+    await until(() => new RegExp(`\\[link RESULT ${id} from "far@[^"]+"\\] 1 2 3`).test(logged(0)))
+    await until(async () => /✓ .*far: count to 3\n\s+⇒ 1 2 3/.test((await boss.tool('link_board')).text))
+
+    const unsigned = await fetch(`http://127.0.0.1:${httpA}/deliver`, { method: 'POST', body: JSON.stringify({ to: 'x', msg: { kind: 'msg', text: 'hi' } }) })
+    assert.equal(unsigned.status, 401)
+  } finally {
+    boss.stop()
+    far.stop()
+    for (const d of daemons) d.kill('SIGTERM')
+  }
+})

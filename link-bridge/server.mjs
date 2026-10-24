@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // link-bridge: a stdio MCP server that lets coding-agent sessions (Claude Code, Codex, Qwen Code, ...)
 // find and message each other, and lets one session host and hand out work to the others.
-// State lives in plain files under LINK_HOME (default ~/.session-link); no network, no dependencies.
+// State lives in plain files under LINK_HOME (default ~/.session-link); no dependencies. The server itself never
+// touches the network: lan.mjs, run separately, links machines on one network (see README).
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -71,7 +72,8 @@ const peers = ({ includeSelf = false } = {}) => {
     if (!f.endsWith('.json')) continue
     const p = readJson(dir('peers', f))
     if (!p) continue
-    if (Date.now() - p.seen > STALE_MS || !alive(p.pid)) {
+    // A session on another machine (written by lan.mjs) has no local process: it is live while lan.mjs keeps refreshing it.
+    if (Date.now() - p.seen > STALE_MS || (!p.remote && !alive(p.pid))) {
       fs.rmSync(dir('peers', f), { force: true })
       continue
     }
@@ -187,11 +189,40 @@ const applyRenames = () => {
       fs.rmSync(path.join(box, f), { force: true })
       const h = readJson(dir('host.json'))
       const name = String(m.name || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60)
-      if (h && h.id === m.from && name) {
+      const remoteHost = m.via === 'lan' && readJson(dir('peers', `${m.from}.json`))?.isHost === true
+      if (((h && h.id === m.from) || remoteHost) && name) {
         myName = name
         beat()
       }
     }
+  }
+}
+
+// ---------- from other machines ----------
+// lan.mjs drops messages from other machines into this inbox. Nobody on this machine typed them, so this server types
+// them into its own session, records tasks so link_report finds the host, and marks results done on its own board.
+const lanSeen = new Set()
+const lanChain = { p: Promise.resolve() }
+const takeLan = () => {
+  const box = dir('inbox', ID)
+  if (!fs.existsSync(box)) return
+  for (const f of fs.readdirSync(box).sort()) {
+    if (!f.endsWith('.json') || lanSeen.has(f)) continue
+    const file = path.join(box, f)
+    const m = readJson(file)
+    if (!m || m.via !== 'lan' || m.kind === 'rename') continue
+    lanSeen.add(f)
+    if (m.kind === 'task') received.set(m.taskId, { hostId: m.from, hostName: m.fromName })
+    if (m.kind === 'result') {
+      const tasks = loadTasks(ID)
+      if (tasks.some(x => x.id === m.taskId)) writeJson(tasksFile(ID), tasks.map(x => (x.id === m.taskId ? { ...x, status: 'done', result: String(m.text).slice(0, 2000) } : x)))
+    }
+    if (!WAKE) continue
+    const me = { name: myName, tty: myTty, pane: PANE }
+    if (!me.tty && !me.pane) continue
+    lanChain.p = lanChain.p.then(async () => {
+      if (await typeInto(me, typed(m))) fs.rmSync(file, { force: true })
+    }).catch(() => {})
   }
 }
 
@@ -233,7 +264,7 @@ const TOOLS = [
 const ok = text => ({ content: [{ type: 'text', text }] })
 const fail = text => ({ content: [{ type: 'text', text }], isError: true })
 
-const listWith = list => (list.length ? list.map(p => `${p.name}  [${p.cli}]  ${path.basename(p.cwd)}  (${p.id.slice(0, 8)})`).join('\n') : 'No other sessions running.')
+const listWith = list => (list.length ? list.map(p => `${p.name}  [${p.cli}]  ${path.basename(p.cwd)}${p.remote ? `  on ${p.machine}` : ''}  (${p.id.slice(0, 8)})`).join('\n') : 'No other sessions running.')
 
 const call = async (name, a) => {
   applyRenames()
@@ -294,8 +325,11 @@ const call = async (name, a) => {
     case 'link_report': {
       const t = received.get(String(a.task_id)) || findTask(String(a.task_id))
       if (!t) return fail(`No task ${a.task_id} was assigned to this session.`)
-      const tasks = loadTasks(t.hostId).map(x => (x.id === a.task_id ? { ...x, status: 'done', result: String(a.result).slice(0, 2000) } : x))
-      writeJson(tasksFile(t.hostId), tasks)
+      // A host on another machine keeps its board there; it marks the task done when the result arrives.
+      if (fs.existsSync(tasksFile(t.hostId))) {
+        const tasks = loadTasks(t.hostId).map(x => (x.id === a.task_id ? { ...x, status: 'done', result: String(a.result).slice(0, 2000) } : x))
+        writeJson(tasksFile(t.hostId), tasks)
+      }
       send(t.hostId, 'result', { taskId: String(a.task_id), text: String(a.result) })
       return ok('Result sent to the host.')
     }
@@ -324,7 +358,7 @@ const call = async (name, a) => {
 }
 
 // ---------- MCP over stdio ----------
-const INSTRUCTIONS = `You can message other coding-agent sessions on this machine. Call link_peers to see them, link_tell to message one, and messages, tasks and results sent to you are typed into your prompt automatically (tagged [link ...]); link_inbox is only a fallback for anything that could not be typed. One session can call link_host and then link_assign tasks; a worker answers with link_report.`
+const INSTRUCTIONS = `You can message other coding-agent sessions on this machine (and on other machines on the same network when lan.mjs runs; link_peers shows them as "on <machine>"). Call link_peers to see them, link_tell to message one, and messages, tasks and results sent to you are typed into your prompt automatically (tagged [link ...]); link_inbox is only a fallback for anything that could not be typed. One session can call link_host and then link_assign tasks; a worker answers with link_report.`
 
 const reply = (id, result) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id, result }) + '\n')
 const error = (id, code, message) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id, error: { code, message } }) + '\n')
@@ -382,3 +416,7 @@ setInterval(() => {
   beat()
   applyRenames()
 }, BEAT_MS).unref?.()
+setInterval(() => {
+  applyRenames()
+  takeLan()
+}, 700).unref?.()
