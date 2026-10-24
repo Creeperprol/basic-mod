@@ -1,14 +1,18 @@
-# claude-mods
+# basic-mod
 
 - `ai-link` (AI Link, formerly `session-link`): a Claude Code mod (a plugin of function hooks) with two side panes.
 - `link-bridge`: a small MCP server so Claude Code, Codex, Qwen Code and the Antigravity CLI (`agy`) sessions can message each other and hand out work (see `link-bridge/README.md`). It is the cross-CLI half of AI Link; the `ai-link` mod is the Claude Code half. One-shot helpers there let Claude use `agy` (`agy-worker.sh`, `agy-image.sh`) and Codex (`codex-agent.sh`, read-only by default) as agents; `link-grid.sh` and `big-grid.sh` open many workers in one tmux window, and messages are typed straight into their panes.
 
 ## Install
 
+Not on a marketplace. Clone the repo and load the plugin folder:
+
 ```
-/plugin marketplace add Creeperprol/basic-mod
-/plugin install ai-link@claude-mods
+git clone https://github.com/Creeperprol/basic-mod
+claude --plugin-dir basic-mod/ai-link
 ```
+
+To load it in every session, add the folder's absolute path to `CLAUDE_CODE_PLUGIN_DIRS` in the `env` block of `~/.claude/settings.json`.
 
 ## Usage pane
 
@@ -43,6 +47,7 @@ status_line = ["model-with-reasoning", "thread-name", "context-used", "five-hour
 
 ## Versions
 
+- **ai-link 1.1.1** — taken off the `claude-mods` marketplace; install from a clone (see Install). If you installed it from the marketplace: `/plugin uninstall ai-link@claude-mods` and `/plugin marketplace remove claude-mods`.
 - **ai-link 1.1.0** — renamed from `session-link` to `ai-link` (AI Link). If you installed the old name: `/plugin uninstall session-link@claude-mods`, then `/plugin install ai-link@claude-mods`.
 
 - **session-link 0.2.1** — `/clear` no longer drops the session name or the host role: the new session picks them up from the one it replaced.
