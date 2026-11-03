@@ -59,7 +59,7 @@ test('sessions of different CLIs find each other, hand out work and report back'
 
   // plain message
   assert.match((await host.tool('link_tell', { to: 'cod', text: 'hello there' })).text, /Sent to coder/)
-  assert.match((await codex.tool('link_inbox')).text, /MESSAGE from "boss":\nhello there/)
+  assert.match((await codex.tool('link_inbox')).text, /MESSAGE from "boss":\nhello there\n\(To answer, call link_tell with to "boss"/)
   assert.match((await codex.tool('link_inbox')).text, /empty/)
 
   // a missing or misnamed required argument is refused, never sent as "undefined"
@@ -281,7 +281,7 @@ test('lan.mjs links two machines: peers, messages, tasks and results cross, unsi
     await until(async () => /boss .* on /.test((await far.tool('link_peers')).text))
 
     assert.match((await boss.tool('link_tell', { to: 'far', text: 'hello over wifi' })).text, /Sent to far/)
-    await until(() => /\[link MESSAGE from "boss@[^"]+"\] hello over wifi/.test(logged(1)))
+    await until(() => /\[link MESSAGE from "boss@[^"]+"\] hello over wifi \(To answer, call link_tell with to "boss@[^"]+"/.test(logged(1)))
 
     await boss.tool('link_host')
     assert.match((await boss.tool('link_assign', { worker: 'far', task: 'count to 3' })).text, /far/)
@@ -328,7 +328,7 @@ test('listen.mjs (a Claude Code hook) hands a waiting message to the session of 
   fs.mkdirSync(box, { recursive: true })
   fs.writeFileSync(path.join(box, '1.json'), JSON.stringify({ kind: 'msg', from: 'x', fromName: 'boss@Peemai', at: Date.now(), text: 'hi there' }))
   assert.equal(await exited, 2)
-  assert.match(err, /\[link MESSAGE from "boss@Peemai"\] hi there/)
+  assert.match(err, /\[link MESSAGE from "boss@Peemai"\] hi there \(To answer, call link_tell with to "boss@Peemai"/)
   assert.equal(fs.readdirSync(box).length, 0)
   s.stop()
 

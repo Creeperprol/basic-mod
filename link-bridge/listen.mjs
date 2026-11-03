@@ -120,7 +120,7 @@ const oneLine = t => String(t).replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/
 const show = m => {
   if (m.kind === 'task') return `[link TASK ${m.taskId} from host "${m.fromName}"] ${oneLine(m.text)} (When finished, call link_report with task_id "${m.taskId}" and a short result.)`
   if (m.kind === 'result') return `[link RESULT ${m.taskId} from "${m.fromName}"] ${oneLine(m.text)}`
-  return `[link MESSAGE from "${m.fromName}"] ${oneLine(m.text)}`
+  return `[link MESSAGE from "${m.fromName}"] ${oneLine(m.text)} (To answer, call link_tell with to "${m.fromName}"; text you only write in your chat is never sent back.)`
 }
 
 const box = dir('inbox', me.id)

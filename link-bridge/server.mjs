@@ -115,7 +115,7 @@ const oneLine = t => String(t).replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/
 const typed = m => {
   if (m.kind === 'task') return `[link TASK ${m.taskId} from host "${m.fromName}"] ${oneLine(m.text)} (When finished, call link_report with task_id "${m.taskId}" and a short result.)`
   if (m.kind === 'result') return `[link RESULT ${m.taskId} from "${m.fromName}"] ${oneLine(m.text)}`
-  return `[link MESSAGE from "${m.fromName}"] ${oneLine(m.text)}`
+  return `[link MESSAGE from "${m.fromName}"] ${oneLine(m.text)} (To answer, call link_tell with to "${m.fromName}"; text you only write in your chat is never sent back.)`
 }
 const run = (cmd, args) => new Promise(resolve => execFile(cmd, args, { timeout: 15_000 }, (err, out) => resolve(err ? '' : String(out).trim())))
 const OSA = `on run argv
@@ -248,7 +248,7 @@ const show = m => {
     return `TASK ${m.taskId} from host "${m.fromName}":\n${m.text}\n(When finished, call link_report with task_id "${m.taskId}" and a short result.)`
   }
   if (m.kind === 'result') return `RESULT ${m.taskId} from "${m.fromName}":\n${m.text}`
-  return `MESSAGE from "${m.fromName}":\n${m.text}`
+  return `MESSAGE from "${m.fromName}":\n${m.text}\n(To answer, call link_tell with to "${m.fromName}"; text you only write in your chat is never sent back.)`
 }
 
 // ---------- tools ----------
@@ -370,7 +370,7 @@ const call = async (name, a) => {
 }
 
 // ---------- MCP over stdio ----------
-const INSTRUCTIONS = `You can message other coding-agent sessions on this machine (and on other machines on the same network when lan.mjs runs; link_peers shows them as "on <machine>"). Call link_peers to see them, link_tell to message one, and messages, tasks and results sent to you are typed into your prompt automatically (tagged [link ...]); link_inbox is only a fallback for anything that could not be typed. One session can call link_host and then link_assign tasks; a worker answers with link_report.`
+const INSTRUCTIONS = `You can message other coding-agent sessions on this machine (and on other machines on the same network when lan.mjs runs; link_peers shows them as "on <machine>"). Call link_peers to see them, link_tell to message one, and messages, tasks and results sent to you are typed into your prompt automatically (tagged [link ...]); link_inbox is only a fallback for anything that could not be typed. One session can call link_host and then link_assign tasks; a worker answers with link_report. Your chat text is never seen by other sessions: answer a [link MESSAGE ...] with link_tell to its sender, and a [link TASK ...] with link_report.`
 
 const reply = (id, result) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id, result }) + '\n')
 const error = (id, code, message) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id, error: { code, message } }) + '\n')

@@ -1,6 +1,6 @@
 # AI Link bridge (link-bridge)
 
-The cross-CLI half of AI Link: works with any MCP-capable CLI. The Claude Code half is the `ai-link` mod.
+The cross-CLI half of AI Link: works with any MCP-capable CLI. The Claude Code half is the `ai-link` plugin.
 
 A tiny MCP server (no dependencies, Node 18+) that lets coding-agent sessions on one machine — Claude Code, Codex, Qwen Code, anything that speaks MCP — find and message each other, and lets one session host and hand out work.
 
@@ -34,7 +34,7 @@ Codex asks before each MCP call; for hands-off use add `default_tools_approval_m
 
 ## How a task reaches a worker
 
-**Push delivery (default).** Each server registers its terminal (the agent's tty, or its tmux pane). When someone sends a message, task or result, the server also types it into the target's prompt as one line tagged `[link MESSAGE ...]`, `[link TASK t1 ...]` or `[link RESULT t1 ...]`: with `tmux send-keys` for a tmux pane, or with Terminal.app `do script` for a Terminal tab (macOS). The text goes first and Enter follows 1 second later, because Codex treats a fast Enter as part of a paste. If typing worked, the inbox copy is removed; if it did not (no terminal, other terminal app), the message stays in the inbox and `link_inbox` still returns it. A worker can call `link_report` for a task it only saw typed.
+**Push delivery (default).** Each server registers its terminal (the agent's tty, or its tmux pane). When someone sends a message, task or result, the server also types it into the target's prompt as one line tagged `[link MESSAGE ...]`, `[link TASK t1 ...]` or `[link RESULT t1 ...]`: with `tmux send-keys` for a tmux pane, or with Terminal.app `do script` for a Terminal tab (macOS). The text goes first and Enter follows 1 second later, because Codex treats a fast Enter as part of a paste. If typing worked, the inbox copy is removed; if it did not (no terminal, other terminal app), the message stays in the inbox and `link_inbox` still returns it. A worker can call `link_report` for a task it only saw typed. A typed `[link MESSAGE ...]` ends with "(To answer, call link_tell with to \"<sender>\" ...)", because a reply written only in the receiver's chat never reaches the sender (Codex did exactly that); the server instructions say the same.
 
 - `LINK_WAKE=0` turns push delivery off (the tests do this); `LINK_WAKE_LOG=file` records what would be typed instead of typing it.
 - Codex starts MCP servers from its shared app-server, so they have no terminal. Pass `LINK_PANE` (and `LINK_NAME`) through `-c mcp_servers.link.env...`; `link-grid.sh` does this. `LINK_TTY` sets the Terminal tab explicitly.
