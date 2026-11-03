@@ -47,6 +47,7 @@ status_line = ["model-with-reasoning", "thread-name", "context-used", "five-hour
 
 ## Versions
 
+- **ai-link 1.3.3** — default session names are `claude-<id>` (like `codex-<id>`, `agy-<id>`); the folder and user name are no longer part of them. Saved names are kept.
 - **ai-link 1.3.2** — link-bridge: a typed `[link MESSAGE ...]` now tells the receiver to answer with `link_tell` to the sender, so Codex workers stop replying only in their own chat.
 - **ai-link 1.3.1** — link-bridge refuses a tool call with a missing required argument (a reply arrived as "undefined").
 - **ai-link 1.3.0** — `link-bridge/listen.mjs`: `node listen.mjs install` adds a Claude Code hook so sessions read link messages by themselves where nothing can type into the window (Windows Terminal, VS Code, iTerm2).

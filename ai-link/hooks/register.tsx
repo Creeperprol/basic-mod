@@ -38,6 +38,9 @@ const ago = (ms: number) => {
 // Folder name of a path, whether it uses / (macOS, Linux) or \\ (Windows).
 const base = (cwd: string) => cwd.split(/[\\/]+/).filter(Boolean).pop() ?? 'session'
 
+// The default name of a session: claude-<id>, like codex-<id> and agy-<id> from the bridge. The folder is not part of it (it shows beside the name in the pane), so a user name or a project path never ends up in a session name.
+const defaultName = (_cwd: string, id: string) => `claude-${id.slice(0, 4)}`
+
 async function listPeers($: any, selfId: string): Promise<Peer[]> {
   const now = await $.clock.now()
   const out: Peer[] = []
@@ -334,7 +337,7 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     const id = await $.session.id()
     const cwd = await $.session.cwd()
-    let name = options.name ? String(options.name) : ((await $.store.get(`name:${id}`)) as string | undefined) || `${base(cwd)}-${id.slice(0, 4)}`
+    let name = options.name ? String(options.name) : ((await $.store.get(`name:${id}`)) as string | undefined) || defaultName(cwd, id)
     // /clear starts a new session id: carry the name and the host role over from the one it replaced.
     const carried = (e as { source?: string }).source === 'clear' ? await takeHandoff($, cwd) : null
     if (carried && !options.name) name = carried.name
