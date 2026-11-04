@@ -9,7 +9,7 @@
 #     -m MIX      which CLI per pane: "claude", "codex", "agy" or "mix" = alternate codex, agy, ... (default mix)
 #     -M MODEL    model for claude panes (default sonnet; e.g. haiku, opus)
 #     -a          attach to the session when done (default: just print how to)
-# Workers are named <cli>-<n> (claude-1, codex-2, agy-3, ...). Codex runs read-only with no approval bypass; agy asks for permission as usual.
+# Workers are named <cli>-<n> (claude-1, codex-2, agy-3, ...). Codex runs with the approval and sandbox bypass flag; agy asks for permission as usual.
 set -euo pipefail
 DIR="$PWD"; SESSION="link-grid"; COUNT=4; MIX="mix"; MODEL="sonnet"; ATTACH=0
 while getopts "d:s:n:m:M:a" o; do
@@ -31,7 +31,7 @@ cmd_for() { # $1 = index starting at 1
   local cli="$MIX"; [ "$MIX" = mix ] && { [ $(( $1 % 2 )) -eq 1 ] && cli=codex || cli=agy; }
   case "$cli" in
     claude) echo "LINK_CLI=claude LINK_NAME=claude-$1 claude --model $MODEL" ;;
-    codex) echo "codex -s read-only -a never -C '$DIR' -c 'mcp_servers.link.env.LINK_NAME=\"codex-$1\"' -c \"mcp_servers.link.env.LINK_PANE=\\\"\$TMUX_PANE\\\"\"" ;;
+    codex) echo "codex --dangerously-bypass-approvals-and-sandbox -C '$DIR' -c 'mcp_servers.link.env.LINK_NAME=\"codex-$1\"' -c \"mcp_servers.link.env.LINK_PANE=\\\"\$TMUX_PANE\\\"\"" ;;
     agy)   echo "LINK_CLI=agy LINK_NAME=agy-$1 agy" ;;
   esac
 }

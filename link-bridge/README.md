@@ -47,7 +47,7 @@ Codex asks before each MCP call; for hands-off use add `default_tools_approval_m
 
 ## Up to 8 workers in one window (`link-grid.sh`)
 
-`./link-grid.sh -d <trusted folder> -n 8 -m mix` opens one tmux session split into up to 8 tiled panes, alternating Codex (read-only) and agy (`-m codex` or `-m agy` for one kind). Workers appear in `link_peers` as `codex-1`, `agy-2`, ... with their pane, so `link_assign` types the task straight into the pane. `-a` attaches; `tmux kill-session -t link-grid` stops them all. Needs `tmux`. Verified with 8 panes: all 8 registered, and a message typed into `codex-1` and `agy-2` arrived (Codex answered; agy asked for permission before replying).
+`./link-grid.sh -d <trusted folder> -n 8 -m mix` opens one tmux session split into up to 8 tiled panes, alternating Codex (approval and sandbox bypassed) and agy (`-m codex` or `-m agy` for one kind). Workers appear in `link_peers` as `codex-1`, `agy-2`, ... with their pane, so `link_assign` types the task straight into the pane. `-a` attaches; `tmux kill-session -t link-grid` stops them all. Needs `tmux`. Verified with 8 panes: all 8 registered, and a message typed into `codex-1` and `agy-2` arrived (Codex answered; agy asked for permission before replying).
 
 ## Two machines on the same Wi-Fi (`lan.mjs`)
 
