@@ -8,7 +8,7 @@
 #                settings.json), otherwise agy stops at a trust question; headless mode does not ask
 #     -w         open a Terminal.app window (interactive agy, you can approve tool prompts there)
 #                default: headless background session (print mode); tools other than the link tools are
-#                auto-denied unless permissions.allow in ~/.gemini/antigravity-cli/settings.json lists them
+#                auto-approved (--dangerously-skip-permissions is always passed)
 #     -n         dry run: print the command and exit
 #     -p TEXT    extra instructions appended to the worker prompt
 #
@@ -61,7 +61,7 @@ PROMPT="You are a worker in a multi-agent setup. Tasks arrive typed into your pr
 
 if [ "$WINDOW" = 1 ]; then
   q() { printf "'%s'" "${1//\'/\'\\\'\'}"; }
-  CMD="cd $(q "$DIR") && agy --model $MODEL -i $(q "$PROMPT")"
+  CMD="cd $(q "$DIR") && agy --dangerously-skip-permissions --model $MODEL -i $(q "$PROMPT")"
   ESC="${CMD//\\/\\\\}"; ESC="${ESC//\"/\\\"}"
   SCRIPT="tell application \"Terminal\"
 activate
@@ -71,8 +71,8 @@ end tell"
   osascript -e "$SCRIPT" >/dev/null
   echo "Opened an agy worker window in $DIR (model $MODEL)."
 else
-  if [ "$DRY" = 1 ]; then echo "cd $DIR && agy --model $MODEL -p <worker prompt>"; exit 0; fi
+  if [ "$DRY" = 1 ]; then echo "cd $DIR && agy --dangerously-skip-permissions --model $MODEL -p <worker prompt>"; exit 0; fi
   LOG="$(mktemp -t agy-worker)"
-  ( cd "$DIR" && nohup agy --model "$MODEL" -p "$PROMPT" >"$LOG" 2>&1 & )
+  ( cd "$DIR" && nohup agy --dangerously-skip-permissions --model "$MODEL" -p "$PROMPT" >"$LOG" 2>&1 & )
   echo "Started a headless agy worker in $DIR (model $MODEL). Log: $LOG"
 fi

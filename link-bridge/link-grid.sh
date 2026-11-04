@@ -9,7 +9,7 @@
 #     -m MIX      which CLI per pane: "claude", "codex", "agy" or "mix" = alternate codex, agy, ... (default mix)
 #     -M MODEL    model for claude panes (default sonnet; e.g. haiku, opus)
 #     -a          attach to the session when done (default: just print how to)
-# Workers are named <cli>-<n> (claude-1, codex-2, agy-3, ...). Codex runs with the approval and sandbox bypass flag; agy asks for permission as usual.
+# Workers are named <cli>-<n> (claude-1, codex-2, agy-3, ...). Codex runs with the approval and sandbox bypass flag; agy runs with --dangerously-skip-permissions.
 set -euo pipefail
 DIR="$PWD"; SESSION="link-grid"; COUNT=4; MIX="mix"; MODEL="sonnet"; ATTACH=0
 while getopts "d:s:n:m:M:a" o; do
@@ -32,7 +32,7 @@ cmd_for() { # $1 = index starting at 1
   case "$cli" in
     claude) echo "LINK_CLI=claude LINK_NAME=claude-$1 claude --model $MODEL" ;;
     codex) echo "codex --dangerously-bypass-approvals-and-sandbox -C '$DIR' -c 'mcp_servers.link.env.LINK_NAME=\"codex-$1\"' -c \"mcp_servers.link.env.LINK_PANE=\\\"\$TMUX_PANE\\\"\"" ;;
-    agy)   echo "LINK_CLI=agy LINK_NAME=agy-$1 agy" ;;
+    agy)   echo "LINK_CLI=agy LINK_NAME=agy-$1 agy --dangerously-skip-permissions" ;;
   esac
 }
 

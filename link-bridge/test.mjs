@@ -137,7 +137,7 @@ test('agy-worker.sh validates the model name and builds a worker command', async
   fs.writeFileSync(settings, JSON.stringify({ trustedWorkspaces: [os.tmpdir()] }))
   const ok = spawnSync('bash', [script, '-n', '-w', '-d', os.tmpdir(), '-m', 'gemini-3.8-flash-low'], { encoding: 'utf8', env: { ...process.env, AGY_SETTINGS: settings } })
   assert.equal(ok.status, 0)
-  assert.match(ok.stdout, /agy --model gemini-3\.8-flash-low -i /)
+  assert.match(ok.stdout, /agy --dangerously-skip-permissions --model gemini-3\.8-flash-low -i /)
   assert.match(ok.stdout, /link_report/)
 })
 
