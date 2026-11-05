@@ -349,3 +349,16 @@ test('listen.mjs (a Claude Code hook) hands a waiting message to the session of 
   j = JSON.parse(fs.readFileSync(settings, 'utf8'))
   assert.deepEqual(j, { hooks: { Stop: [{ hooks: [{ type: 'command', command: 'echo mine' }] }] } })
 })
+
+test('link_peers lists AI sessions in other panes of the same tmux window that have not joined', async () => {
+  const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'win-'))
+  fs.writeFileSync(path.join(bin, 'codex'), '#!/bin/sh\nsleep 30\n', { mode: 0o755 })
+  const fake = spawn(path.join(bin, 'codex'), [], { stdio: 'ignore' })
+  fs.writeFileSync(path.join(bin, 'tmux'), `#!/bin/sh\necho "%1 $$"\necho "%7 ${fake.pid}"\n`, { mode: 0o755 })
+  const a = start('claude', 'win-a', { LINK_PANE: '%1', PATH: `${bin}:${process.env.PATH}` })
+  await a.init()
+  const r = await a.tool('link_peers')
+  fake.kill()
+  a.stop()
+  assert.match(r.text, /not linked yet: codex \(pane %7\)/)
+})

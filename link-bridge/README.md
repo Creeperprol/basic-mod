@@ -10,7 +10,7 @@ State is plain files under `~/.session-link` (override with `LINK_HOME`). Nothin
 
 | Tool | What it does |
 |---|---|
-| `link_peers` | List the other running sessions (name, CLI, folder) |
+| `link_peers` | List the other running sessions (name, CLI, folder); inside tmux it also lists AI sessions (claude, codex, agy, qwen, gemini) in other panes of the same window that have not joined link yet |
 | `link_tell` / `link_tellall` | Message one session (name or id prefix) or all |
 | `link_inbox` | Read and clear what was sent to you; `wait_seconds` waits for something |
 | `link_host` | Become the host (or stop) |

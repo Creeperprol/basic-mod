@@ -118,6 +118,32 @@ const typed = m => {
   return `[link MESSAGE from "${m.fromName}"] ${oneLine(m.text)} (To answer, call link_tell with to "${m.fromName}"; text you only write in your chat is never sent back.)`
 }
 const run = (cmd, args) => new Promise(resolve => execFile(cmd, args, { timeout: 15_000 }, (err, out) => resolve(err ? '' : String(out).trim())))
+// AI sessions in the other panes of my tmux window, found by their process tree, whether or not they joined link.
+const AI_CLI = /^(claude|codex|agy|qwen|gemini)$/
+const windowAis = async () => {
+  if (!PANE) return []
+  const panes = (await run('tmux', ['list-panes', '-t', PANE, '-F', '#{pane_id} #{pane_pid}'])).split('\n').map(l => l.trim().split(/\s+/)).filter(a => a.length === 2 && a[0] !== PANE)
+  if (!panes.length) return []
+  const kids = new Map()
+  const cmd = new Map()
+  for (const line of (await run('ps', ['-A', '-o', 'pid=,ppid=,command='])).split('\n')) {
+    const m = line.trim().match(/^(\d+)\s+(\d+)\s+(.*)$/)
+    if (!m) continue
+    kids.set(m[2], [...(kids.get(m[2]) || []), m[1]])
+    cmd.set(m[1], m[3])
+  }
+  const found = []
+  for (const [pane, pid] of panes) {
+    const todo = [pid]
+    for (let i = 0; i < todo.length && i < 200; i++) {
+      todo.push(...(kids.get(todo[i]) || []))
+      const toks = (cmd.get(todo[i]) || '').split(/\s+/).slice(0, 2).map(t => path.basename(t))
+      const hit = toks.find(t => AI_CLI.test(t))
+      if (hit) { found.push({ pane, cli: hit }); break }
+    }
+  }
+  return found
+}
 const OSA = `on run argv
   set theTTY to item 1 of argv
   set theText to item 2 of argv
@@ -283,7 +309,10 @@ const call = async (name, a) => {
   switch (name) {
     case 'link_peers': {
       const h = hostRecord()
-      return ok(`You are "${myName}" [${CLI}]${amHost() ? ' (host)' : ''}.${h && !amHost() ? ` Host: ${h.name}.` : ''}\n${listWith(peers())}`)
+      const list = peers()
+      const here = (await windowAis()).filter(w => !list.some(p => p.pane === w.pane))
+      const extra = here.length ? `\nIn this tmux window, not linked yet: ${here.map(w => `${w.cli} (pane ${w.pane})`).join(', ')}. Ask the person to start link in them, or use link-grid.sh.` : ''
+      return ok(`You are "${myName}" [${CLI}]${amHost() ? ' (host)' : ''}.${h && !amHost() ? ` Host: ${h.name}.` : ''}\n${listWith(list)}${extra}`)
     }
     case 'link_tell': {
       const m = pick(peers(), a.to)
