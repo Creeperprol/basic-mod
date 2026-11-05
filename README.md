@@ -1,7 +1,7 @@
 # basic-mod
 
 - `ai-link` (AI Link, formerly `session-link`): a Claude Code mod (a plugin of function hooks) with two side panes.
-- `link-bridge`: a small MCP server so Claude Code, Codex, Qwen Code and the Antigravity CLI (`agy`) sessions can message each other and hand out work (see `link-bridge/README.md`). It is the cross-CLI half of AI Link; the `ai-link` mod is the Claude Code half. One-shot helpers there let Claude use `agy` (`agy-worker.sh`, `agy-image.sh`) and Codex (`codex-agent.sh`, read-only by default) as agents; `link-grid.sh` and `big-grid.sh` open many workers in one tmux window, and messages are typed straight into their panes; `lan.mjs` links sessions on other machines on the same Wi-Fi.
+- `link-bridge`: a small MCP server so Claude Code, Codex, Qwen Code and the Antigravity CLI (`agy`) sessions can message each other and hand out work (see `link-bridge/README.md`). It is the cross-CLI half of AI Link; the `ai-link` mod is the Claude Code half. One-shot helpers there let Claude use `agy` (`agy-worker.sh`, `agy-image.sh`) and Codex (`codex-agent.sh`, read-only by default) as agents; `link-grid.sh` and `big-grid.sh` open many workers in one tmux window, and messages are typed straight into their panes; `link_peers` also shows AI sessions in other panes of the same tmux window that have not joined; `lan.mjs` links sessions on other machines on the same Wi-Fi.
 
 ## Install
 
@@ -47,6 +47,7 @@ status_line = ["model-with-reasoning", "thread-name", "context-used", "five-hour
 
 ## Versions
 
+- **ai-link 1.4.1** — link-bridge: inside tmux, `link_peers` also lists AI sessions (claude, codex, agy, qwen, gemini) in other panes of the same window that have not joined link yet (1.4.0 added it, 1.4.1 documents it).
 - **ai-link 1.3.3** — default session names are `claude-<id>` (like `codex-<id>`, `agy-<id>`); the folder and user name are no longer part of them. Saved names are kept.
 - **ai-link 1.3.2** — link-bridge: a typed `[link MESSAGE ...]` now tells the receiver to answer with `link_tell` to the sender, so Codex workers stop replying only in their own chat.
 - **ai-link 1.3.1** — link-bridge refuses a tool call with a missing required argument (a reply arrived as "undefined").
