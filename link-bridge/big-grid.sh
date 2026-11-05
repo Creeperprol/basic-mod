@@ -5,7 +5,7 @@ S=link-grid; DIR="$HOME"; MODEL=sonnet
 tmux kill-session -t "$S" 2>/dev/null || true
 
 codex_cmd()  { echo "codex --dangerously-bypass-approvals-and-sandbox -C '$DIR' -c 'mcp_servers.link.env.LINK_NAME=\"codex-$1\"' -c \"mcp_servers.link.env.LINK_PANE=\\\"\$TMUX_PANE\\\"\""; }
-claude_cmd() { echo "LINK_CLI=claude LINK_NAME=claude-$1 claude --model $MODEL"; }
+claude_cmd() { echo "env -u TMUX -u CLAUDECODE -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_SESSION_ATTENDED -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_CODE_ENTRYPOINT -u AI_AGENT COLORTERM=truecolor LINK_CLI=claude LINK_NAME=claude-$1 claude --model $MODEL"; }
 agy_cmd()    { echo "LINK_CLI=agy LINK_NAME=agy-$1 agy --dangerously-skip-permissions"; }
 
 BIG=$(tmux new-session -d -s "$S" -x 220 -y 60 -c "$DIR" -P -F '#{pane_id}' "LINK_CLI=claude LINK_NAME=claude-big claude --model $MODEL")

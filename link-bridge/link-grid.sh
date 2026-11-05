@@ -30,7 +30,7 @@ DIR="$(cd "$DIR" && pwd -P)"
 cmd_for() { # $1 = index starting at 1
   local cli="$MIX"; [ "$MIX" = mix ] && { [ $(( $1 % 2 )) -eq 1 ] && cli=codex || cli=agy; }
   case "$cli" in
-    claude) echo "LINK_CLI=claude LINK_NAME=claude-$1 claude --model $MODEL" ;;
+    claude) echo "env -u TMUX -u CLAUDECODE -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_SESSION_ATTENDED -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_CODE_ENTRYPOINT -u AI_AGENT COLORTERM=truecolor LINK_CLI=claude LINK_NAME=claude-$1 claude --model $MODEL" ;;
     codex) echo "codex --dangerously-bypass-approvals-and-sandbox -C '$DIR' -c 'mcp_servers.link.env.LINK_NAME=\"codex-$1\"' -c \"mcp_servers.link.env.LINK_PANE=\\\"\$TMUX_PANE\\\"\"" ;;
     agy)   echo "LINK_CLI=agy LINK_NAME=agy-$1 agy --dangerously-skip-permissions" ;;
   esac
