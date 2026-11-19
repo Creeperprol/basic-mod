@@ -48,6 +48,7 @@ status_line = ["model-with-reasoning", "thread-name", "context-used", "five-hour
 
 ## Versions
 
+- **ai-link 1.7.1** — link-bridge: fixed the Windows SendKeys escape regex and agy trust path matching; Windows scripts checked under PowerShell 7.
 - **ai-link 1.7.0** — link-bridge: Windows push delivery (win:<pid> window address, SendKeys) and `link-grid.ps1` (untested).
 - **ai-link 1.6.0** — link-bridge: PowerShell versions of the agy and Codex helper scripts for Windows (untested).
 - **ai-link 1.5.0** — the `multi-window` skill is bundled in the plugin; loading it as `ai-link:multi-window` (or plain `multi-window`) makes the session the host.

@@ -362,3 +362,8 @@ test('link_peers lists AI sessions in other panes of the same tmux window that h
   a.stop()
   assert.match(r.text, /not linked yet: codex \(pane %7\)/)
 })
+
+test('the Windows SendKeys script escapes + ^ % ~ ( ) { } [ ] with real backslashes', async () => {
+  const { WIN_SEND_SCRIPT } = await import('./proc.mjs')
+  assert.ok(WIN_SEND_SCRIPT.includes('"[\\+\\^%~\\(\\)\\{\\}\\[\\]]"'), WIN_SEND_SCRIPT)
+})

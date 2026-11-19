@@ -111,9 +111,9 @@ Pass `-w` to open a Terminal window that shows the agent working live (its comma
 
 `./big-grid.sh` opens one tmux window (session `link-grid`, needs `tmux`): the left 75% is a 3 x 4 grid (row 1 Codex `codex-1`..`codex-4`; row 2 Claude `claude-1`..`claude-4`; row 3 agy `agy-1`..`agy-4`) and the right 25% is one tall Claude, `claude-big`. Every pane registers with its tmux pane, so `link_tell` / `link_assign` type straight into it (a Codex or agy window opened as a plain Terminal tab has no pane and cannot be typed into). Attach with `tmux attach -t link-grid`; stop all 13 with `tmux kill-session -t link-grid`. Folder is `$HOME` and the Claude model is `sonnet`; edit `DIR` / `MODEL` at the top. Each session uses memory, so on an 8 GB Mac watch Memory Pressure. Codex and agy panes run with their approval and sandbox bypass flags, so only point `DIR` at a folder you trust.
 
-## Windows (untested)
+## Windows (checked with PowerShell 7 on macOS, not yet on Windows)
 
-Everything has a Windows path, written without access to a Windows machine, so check it before relying on it.
+Everything has a Windows path. The scripts parse and their dry runs, quoting, folder-trust check and SendKeys escaping were run under PowerShell 7 on macOS; window focus and typing need a real Windows machine, so check those before relying on them.
 
 - `agy-worker.ps1`, `codex-agent.ps1` and `link-grid.ps1` are PowerShell versions of the `.sh` scripts (PowerShell 5.1 or 7): `.\agy-worker.ps1 -Dir C:\work -Window`, `.\codex-agent.ps1 -Dir C:\work "the task"`, `.\link-grid.ps1 -Count 4 -Mix mix`. `-Window` and `-Watch` open a new PowerShell window; the grid opens one window per worker instead of tmux panes.
 - Push delivery: on Windows a session's address is `win:<pid>`, the nearest ancestor process that owns a window. The bridge brings that window forward and types the message with SendKeys. Two tabs or panes of one Windows Terminal window share a pid, so only the window can be targeted: use one window per worker (what `link-grid.ps1` does). `listen.mjs install` remains the fallback where typing is not possible.

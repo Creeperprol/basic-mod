@@ -47,6 +47,7 @@ export const winFocus = async pid => (/^\d+$/.test(String(pid)) ? (await ps(FOCU
 // SendKeys treats + ^ % ~ ( ) { } [ ] as commands; wrap each in braces to type it literally.
 const SEND =
   'Add-Type -AssemblyName System.Windows.Forms; $w = New-Object -ComObject WScript.Shell; if (-not $w.AppActivate([int]$env:LINK_WINPID)) { "none"; exit }; Start-Sleep -Milliseconds 400; ' +
-  '$t = [regex]::Replace($env:LINK_TEXT, "[\+\^%~\(\)\{\}\[\]]", { param($m) "{" + $m.Value + "}" }); [System.Windows.Forms.SendKeys]::SendWait($t); Start-Sleep -Seconds ([double]$env:LINK_GAP); [System.Windows.Forms.SendKeys]::SendWait("{ENTER}"); "ok"'
+  '$t = [regex]::Replace($env:LINK_TEXT, "[\\+\\^%~\\(\\)\\{\\}\\[\\]]", { param($m) "{" + $m.Value + "}" }); [System.Windows.Forms.SendKeys]::SendWait($t); Start-Sleep -Seconds ([double]$env:LINK_GAP); [System.Windows.Forms.SendKeys]::SendWait("{ENTER}"); "ok"'
+export const WIN_SEND_SCRIPT = SEND
 export const winType = async (pid, text, gapSeconds) =>
   /^\d+$/.test(String(pid)) ? (await ps(SEND, { LINK_WINPID: String(pid), LINK_TEXT: text, LINK_GAP: String(gapSeconds) })) === 'ok' : false

@@ -21,11 +21,12 @@ $Dir = (Resolve-Path -LiteralPath $Dir).Path
 $settings = if ($env:AGY_SETTINGS) { $env:AGY_SETTINGS } else { Join-Path $HOME '.gemini\antigravity-cli\settings.json' }
 function Test-Trusted {
   try { $entries = @((Get-Content -Raw -LiteralPath $settings | ConvertFrom-Json).trustedWorkspaces) } catch { return $true }
-  $d = $Dir.TrimEnd('\')
+  $norm = { param($p) ($p -replace '\\', '/').TrimEnd('/').ToLowerInvariant() }
+  $d = & $norm $Dir
   foreach ($e in $entries) {
     if (-not $e) { continue }
-    $r = ($e -replace '^~', $HOME).TrimEnd('\', '/')
-    if ($d -ieq $r -or $d.StartsWith($r + '\', [StringComparison]::OrdinalIgnoreCase)) { return $true }
+    $r = & $norm ($e -replace '^~', $HOME)
+    if ($d -eq $r -or $d.StartsWith($r + '/')) { return $true }
   }
   return $false
 }
