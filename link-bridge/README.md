@@ -81,27 +81,23 @@ Sessions on the other machine then show up in `link_peers` as `name [cli] folder
 Start a worker with the launcher (it builds the prompt that makes agy wait on `link_inbox`, do each task and answer with `link_report`):
 
 ```
-./agy-worker.sh -d /some/trusted/folder -m gemini-3.8-flash-low       # headless background worker
-./agy-worker.sh -d /some/trusted/folder -m claude-sonnet-4-6 -w        # interactive Terminal window
+./agy-worker.sh -d /some/trusted/folder -m gemini-3.8-flash-low       # opens an interactive Terminal window (there is no headless mode)
 ./agy-worker.sh -n ...                                                  # dry run: print the command
 ```
 
 Things that bite:
-- **Permissions.** Workers started by `agy-worker.sh`, `link-grid.sh` and `big-grid.sh` pass `--dangerously-skip-permissions`, so every tool is auto-approved. Without that flag: Headless (`-p`) agy cannot prompt, so any tool it has no rule for is auto-denied and the session ends with "a tool required the ... permission". Allow only what a worker needs in `~/.gemini/antigravity-cli/settings.json`, one rule per tool, no wildcards: `"permissions": {"allow": ["mcp(link/link_inbox)", "mcp(link/link_report)", "mcp(link/link_peers)", "mcp(link/link_tell)"]}`. A task that needs a shell needs a `command(<prefix>)` rule you have checked, or run the worker interactively (`-w`) and approve at the keyboard. `--dangerously-skip-permissions` auto-approves everything; avoid it.
-- **Trust question.** Like Claude Code, an interactive agy window in a folder it does not trust yet stops at "Do you trust the contents of this project?" (Yes, I trust this folder / No, exit) and a worker there never starts. Headless (`-p`) runs do not ask. Trusted folders are listed under `trustedWorkspaces` in the same settings file (`/tmp` is on this machine). `agy-worker.sh -w` checks that list first (read-only) and refuses with the reason; it never trusts a folder for you, that answer is yours to give.
+- **Permissions.** Workers started by `agy-worker.sh`, `link-grid.sh` and `big-grid.sh` pass `--dangerously-skip-permissions`, so every tool is auto-approved. Without that flag, allow only what a worker needs in `~/.gemini/antigravity-cli/settings.json`, one rule per tool, no wildcards: `"permissions": {"allow": ["mcp(link/link_inbox)", "mcp(link/link_report)", "mcp(link/link_peers)", "mcp(link/link_tell)"]}`. A task that needs a shell needs a `command(<prefix>)` rule you have checked, or run the worker interactively (`-w`) and approve at the keyboard. `--dangerously-skip-permissions` auto-approves everything; avoid it.
+- **Trust question.** Like Claude Code, an interactive agy window in a folder it does not trust yet stops at "Do you trust the contents of this project?" (Yes, I trust this folder / No, exit) and a worker there never starts. Trusted folders are listed under `trustedWorkspaces` in the same settings file (`/tmp` is on this machine). `agy-worker.sh` checks that list first (read-only) and refuses with the reason; it never trusts a folder for you, that answer is yours to give.
 - **Models.** `agy models` lists them (here: `gemini-3.8-flash-low|medium|high`, `claude-sonnet-4-6`, `claude-opus-4-6-thinking`, `gpt-oss-120b-medium`). `--mode auto` is not available on this account.
 - **Pull, not push.** Like Codex and Qwen, an agy session only sees a task when it calls `link_inbox`, which is why the launcher's prompt loops on it. After two empty waits (about 200 s) the worker stops; start another or give it work sooner.
-
-### Make an image with agy, agent-style
-`./agy-image.sh [-o out.jpg] [-m model] [-t seconds] "what the image shows"` starts a headless agy, asks it to use its `generate_image` tool once, waits for the file path, copies the image to `-o` (default `~/Projects/agy-images/`), prints the final path and lets agy exit. No window, no MCP, no permission rule needed for this tool in headless mode. Verified twice (a navy NFC tag, a hand tapping a phone to a pink tag; about 30-40 s each). It fails clearly when agy returns no image, for example `429 RESOURCE_EXHAUSTED` when the account's image quota is used up (hit on the third request in a row).
 
 ## Codex as a one-shot agent (`codex-agent.sh`, tested on codex-cli 0.162.1)
 
 `./codex-agent.sh [-d dir] [-m model] [-s read-only|workspace-write] [-t seconds] [-o file] [-i image]... "the task"` runs `codex exec` for one task, prints its final message and lets it exit, the way a subagent would. Nothing stays running.
 
-Pass `-i image.png` (repeatable) to let the headless agent see an image, e.g. a screenshot. Verified: a solid red PNG was described as "Red".
+Pass `-i image.png` (repeatable) to let the agent see an image, e.g. a screenshot. Verified: a solid red PNG was described as "Red".
 
-Pass `-w` to open a Terminal window that shows the agent working live (its commands and reply stream in, then `[codex finished]`). Verified: the window showed the `ls` command and the answer.
+The Terminal window that shows the agent working live always opens (`-w` is accepted and ignored: no headless runs) (its commands and reply stream in, then `[codex finished]`). Verified: the window showed the `ls` command and the answer.
 
 - **Safe by default:** read-only sandbox, no approval bypass, session not kept on disk (`--ephemeral`). `workspace-write` is opt-in with `-s`; `danger-full-access` and the bypass flags are deliberately not offered.
 - **Verified:** "17 times 23" returned `391` in 12 s; a request to create a file under read-only was refused by the sandbox and reported honestly (8 s, no file); under `workspace-write` the file was created (34 s).

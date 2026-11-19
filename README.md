@@ -1,7 +1,7 @@
 # basic-mod
 
 - `ai-link` (AI Link, formerly `session-link`): a Claude Code mod (a plugin of function hooks) with two side panes.
-- `link-bridge`: a small MCP server so Claude Code, Codex, Qwen Code and the Antigravity CLI (`agy`) sessions can message each other and hand out work (see `link-bridge/README.md`). It is the cross-CLI half of AI Link; the `ai-link` mod is the Claude Code half. One-shot helpers there let Claude use `agy` (`agy-worker.sh`, `agy-image.sh`) and Codex (`codex-agent.sh`, read-only by default) as agents; `link-grid.sh` and `big-grid.sh` open many workers in one tmux window, and messages are typed straight into their panes; `link_peers` also shows AI sessions in other panes of the same tmux window that have not joined; `lan.mjs` links sessions on other machines on the same Wi-Fi.
+- `link-bridge`: a small MCP server so Claude Code, Codex, Qwen Code and the Antigravity CLI (`agy`) sessions can message each other and hand out work (see `link-bridge/README.md`). It is the cross-CLI half of AI Link; the `ai-link` mod is the Claude Code half. One-shot helpers there let Claude use `agy` (`agy-worker.sh`) and Codex (`codex-agent.sh`, read-only by default) as agents; `link-grid.sh` and `big-grid.sh` open many workers in one tmux window, and messages are typed straight into their panes; `link_peers` also shows AI sessions in other panes of the same tmux window that have not joined; `lan.mjs` links sessions on other machines on the same Wi-Fi.
 
 ## Install
 
@@ -48,6 +48,7 @@ status_line = ["model-with-reasoning", "thread-name", "context-used", "five-hour
 
 ## Versions
 
+- **ai-link 1.8.0** — no headless workers: `agy-worker` and `codex-agent` always open a window; `agy-image.sh` removed.
 - **ai-link 1.7.1** — link-bridge: fixed the Windows SendKeys escape regex and agy trust path matching; Windows scripts checked under PowerShell 7.
 - **ai-link 1.7.0** — link-bridge: Windows push delivery (win:<pid> window address, SendKeys) and `link-grid.ps1` (untested).
 - **ai-link 1.6.0** — link-bridge: PowerShell versions of the agy and Codex helper scripts for Windows (untested).

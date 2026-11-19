@@ -8,13 +8,13 @@
 #     -s SANDBOX  read-only (default) | workspace-write   (danger-full-access is not offered)
 #     -t SECS     give up after this long (default 600)
 #     -o FILE     also copy the final message to FILE
-#     -w          open a Terminal window that shows the agent working live (reasoning, commands, result)
+#     -w          accepted and ignored: a Terminal window always shows the agent working live (no headless runs)
 #     -i IMAGE    attach an image so the agent can see it (repeat -i for several)
 # Prints the agent's final message on stdout; exits 1 if it produced none or timed out.
 # Safe by default: read-only sandbox, no approval bypass, session not kept on disk (--ephemeral).
 set -euo pipefail
 
-DIR="$PWD"; MODEL=""; SANDBOX="read-only"; LIMIT=600; OUTFILE=""; IMAGES=(); WATCH_WIN=0
+DIR="$PWD"; MODEL=""; SANDBOX="read-only"; LIMIT=600; OUTFILE=""; IMAGES=(); WATCH_WIN=1
 while getopts "d:m:s:t:o:i:w" o; do
   case "$o" in
     d) DIR="$OPTARG" ;;

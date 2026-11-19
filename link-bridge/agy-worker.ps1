@@ -3,8 +3,8 @@
 #
 #   .\agy-worker.ps1 [-Model MODEL] [-Dir DIR] [-Window] [-DryRun] [-Extra "extra instructions"]
 #     -Model   agy model id (default gemini-3.8-flash-low)
-#     -Dir     working folder (default: current folder); with -Window it must already be trusted by agy
-#     -Window  open a new PowerShell window running interactive agy (default: hidden background session, print mode)
+#     -Dir     working folder (default: current folder); it must already be trusted by agy
+#     -Window  accepted and ignored: the worker always opens a new PowerShell window (interactive agy); there is no headless mode
 #     -DryRun  print the command and exit
 #
 # One-time setup:  agy mcp add --env LINK_CLI=agy link (Get-Command node).Source C:\path\to\link-bridge\server.mjs
@@ -30,9 +30,9 @@ function Test-Trusted {
   }
   return $false
 }
-if ($Window -and -not (Test-Trusted)) {
+if (-not (Test-Trusted)) {
   [Console]::Error.WriteLine("agy does not trust $Dir yet: an interactive window there would stop at the trust question and never start.")
-  [Console]::Error.WriteLine("Use a trusted folder (trustedWorkspaces in $settings), or run agy there once and answer the question. Headless mode (no -Window) does not ask.")
+  [Console]::Error.WriteLine("Use a trusted folder (trustedWorkspaces in $settings), or run agy there once and answer the question.")
   exit 3
 }
 
@@ -41,15 +41,7 @@ $pq = "'" + ($prompt -replace "'", "''") + "'"
 $dq = "'" + ($Dir -replace "'", "''") + "'"
 $utf16 = { param($t) [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($t)) }
 
-if ($Window) {
-  $inner = "Set-Location -LiteralPath $dq; agy --dangerously-skip-permissions --model $Model -i $pq"
-  if ($DryRun) { Write-Output $inner; exit 0 }
-  Start-Process powershell -ArgumentList '-NoExit', '-NoProfile', '-EncodedCommand', (& $utf16 $inner) | Out-Null
-  Write-Output "Opened an agy worker window in $Dir (model $Model)."
-} else {
-  $log = Join-Path ([IO.Path]::GetTempPath()) ("agy-worker-" + [guid]::NewGuid().ToString('N').Substring(0, 8) + '.log')
-  $inner = "Set-Location -LiteralPath $dq; agy --dangerously-skip-permissions --model $Model -p $pq *> '$log'"
-  if ($DryRun) { Write-Output $inner; exit 0 }
-  Start-Process powershell -WindowStyle Hidden -ArgumentList '-NoProfile', '-EncodedCommand', (& $utf16 $inner) | Out-Null
-  Write-Output "Started a headless agy worker in $Dir (model $Model). Log: $log"
-}
+$inner = "Set-Location -LiteralPath $dq; agy --dangerously-skip-permissions --model $Model -i $pq"
+if ($DryRun) { Write-Output $inner; exit 0 }
+Start-Process powershell -ArgumentList '-NoExit', '-NoProfile', '-EncodedCommand', (& $utf16 $inner) | Out-Null
+Write-Output "Opened an agy worker window in $Dir (model $Model)."

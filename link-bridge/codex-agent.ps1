@@ -1,7 +1,7 @@
 # Windows version of codex-agent.sh (PowerShell 5.1+ or 7). Use the Codex CLI as a one-shot agent: start `codex exec`, give it one
 # task, wait, print its final message, let it exit. Nothing stays running.
 #
-#   .\codex-agent.ps1 [-Dir DIR] [-Model MODEL] [-Sandbox read-only|workspace-write] [-Seconds N] [-OutFile FILE] [-Watch] [-Image PATH,...] "the task"
+#   .\codex-agent.ps1 [-Dir DIR] [-Model MODEL] [-Sandbox read-only|workspace-write] [-Seconds N] [-OutFile FILE] [-Watch (ignored: a window always opens)] [-Image PATH,...] "the task"
 # Prints the final message on stdout; exits 1 if there is none or it timed out. Read-only sandbox by default, session not kept (--ephemeral).
 # UNTESTED on a real Windows machine: written alongside codex-agent.sh, check it before relying on it.
 param(
@@ -30,7 +30,7 @@ try {
   foreach ($i in $Image) { $a += @('-i', (Resolve-Path -LiteralPath $i).Path) }
   $a += @('--', $taskText)
   '' | Set-Content -LiteralPath $err
-  if ($Watch) {
+  if ($true) { # always show a window: no headless runs
     $w = "Write-Host 'codex-agent: working...'; Get-Content -LiteralPath '$err' -Wait"
     Start-Process powershell -ArgumentList '-NoProfile', '-EncodedCommand', ([Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($w))) | Out-Null
   }

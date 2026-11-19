@@ -4,11 +4,9 @@
 #
 #   agy-worker.sh [-m MODEL] [-d DIR] [-w] [-n] [-p "extra instructions"]
 #     -m MODEL   agy model id (see `agy models`); default gemini-3.8-flash-low
-#     -d DIR     working folder (default: current folder); with -w it must already be trusted by agy (trustedWorkspaces in
-#                settings.json), otherwise agy stops at a trust question; headless mode does not ask
-#     -w         open a Terminal.app window (interactive agy, you can approve tool prompts there)
-#                default: headless background session (print mode); tools other than the link tools are
-#                auto-approved (--dangerously-skip-permissions is always passed)
+#     -d DIR     working folder (default: current folder); it must already be trusted by agy (trustedWorkspaces in
+#                settings.json), otherwise agy stops at a trust question
+#     -w         accepted and ignored: the worker always opens a Terminal.app window (interactive agy); there is no headless mode
 #     -n         dry run: print the command and exit
 #     -p TEXT    extra instructions appended to the worker prompt
 #
@@ -17,7 +15,7 @@
 #   "permissions": { "allow": ["mcp(link/link_inbox)", "mcp(link/link_report)", "mcp(link/link_peers)", "mcp(link/link_tell)"] }
 set -euo pipefail
 
-MODEL="gemini-3.8-flash-low"; DIR="$PWD"; WINDOW=0; DRY=0; EXTRA=""
+MODEL="gemini-3.8-flash-low"; DIR="$PWD"; WINDOW=1; DRY=0; EXTRA=""
 while getopts "m:d:wnp:" o; do
   case "$o" in
     m) MODEL="$OPTARG" ;;
@@ -51,28 +49,21 @@ for e in entries:
 sys.exit(1)
 PY
 }
-if [ "$WINDOW" = 1 ] && ! trusted; then
+if ! trusted; then
   echo "agy does not trust $DIR yet: an interactive window there would stop at \"Do you trust the contents of this project?\" and never start." >&2
-  echo "Use a trusted folder (see trustedWorkspaces in $SETTINGS), or run agy there once yourself and answer the question. Headless mode (no -w) does not ask." >&2
+  echo "Use a trusted folder (see trustedWorkspaces in $SETTINGS), or run agy there once yourself and answer the question." >&2
   exit 3
 fi
 
 PROMPT="You are a worker in a multi-agent setup. Tasks arrive typed into your prompt as [link TASK <id> ...] lines. Do not poll or wait. When a TASK arrives, do exactly what it says, then call link_report with that task_id and a short result (what you did, what you verified, what you did not). Write no chat text. ${EXTRA}"
 
-if [ "$WINDOW" = 1 ]; then
-  q() { printf "'%s'" "${1//\'/\'\\\'\'}"; }
-  CMD="cd $(q "$DIR") && agy --dangerously-skip-permissions --model $MODEL -i $(q "$PROMPT")"
-  ESC="${CMD//\\/\\\\}"; ESC="${ESC//\"/\\\"}"
-  SCRIPT="tell application \"Terminal\"
+q() { printf "'%s'" "${1//\'/\'\\\'\'}"; }
+CMD="cd $(q "$DIR") && agy --dangerously-skip-permissions --model $MODEL -i $(q "$PROMPT")"
+ESC="${CMD//\\/\\\\}"; ESC="${ESC//\"/\\\"}"
+SCRIPT="tell application \"Terminal\"
 activate
 do script \"$ESC\"
 end tell"
-  if [ "$DRY" = 1 ]; then echo "$CMD"; exit 0; fi
-  osascript -e "$SCRIPT" >/dev/null
-  echo "Opened an agy worker window in $DIR (model $MODEL)."
-else
-  if [ "$DRY" = 1 ]; then echo "cd $DIR && agy --dangerously-skip-permissions --model $MODEL -p <worker prompt>"; exit 0; fi
-  LOG="$(mktemp -t agy-worker)"
-  ( cd "$DIR" && nohup agy --dangerously-skip-permissions --model "$MODEL" -p "$PROMPT" >"$LOG" 2>&1 & )
-  echo "Started a headless agy worker in $DIR (model $MODEL). Log: $LOG"
-fi
+if [ "$DRY" = 1 ]; then echo "$CMD"; exit 0; fi
+osascript -e "$SCRIPT" >/dev/null
+echo "Opened an agy worker window in $DIR (model $MODEL)."
