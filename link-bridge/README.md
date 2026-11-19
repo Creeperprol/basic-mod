@@ -113,4 +113,9 @@ Pass `-w` to open a Terminal window that shows the agent working live (its comma
 
 ## Windows (untested)
 
-`agy-worker.ps1` and `codex-agent.ps1` are PowerShell versions of `agy-worker.sh` and `codex-agent.sh` (PowerShell 5.1 or 7). `-Window` / `-Watch` open a new PowerShell window instead of Terminal.app. They were written without access to a Windows machine, so check them before relying on them. Messages cannot be typed into a Windows window; use `listen.mjs install`. The grid scripts need tmux and stay Unix-only.
+Everything has a Windows path, written without access to a Windows machine, so check it before relying on it.
+
+- `agy-worker.ps1`, `codex-agent.ps1` and `link-grid.ps1` are PowerShell versions of the `.sh` scripts (PowerShell 5.1 or 7): `.\agy-worker.ps1 -Dir C:\work -Window`, `.\codex-agent.ps1 -Dir C:\work "the task"`, `.\link-grid.ps1 -Count 4 -Mix mix`. `-Window` and `-Watch` open a new PowerShell window; the grid opens one window per worker instead of tmux panes.
+- Push delivery: on Windows a session's address is `win:<pid>`, the nearest ancestor process that owns a window. The bridge brings that window forward and types the message with SendKeys. Two tabs or panes of one Windows Terminal window share a pid, so only the window can be targeted: use one window per worker (what `link-grid.ps1` does). `listen.mjs install` remains the fallback where typing is not possible.
+- The ai-link plugin uses the same `win:<pid>` address for the Sessions pane's Switch to button, and checks folder trust with PowerShell before `/spawn`.
+- `big-grid.sh` and `trio-grid.sh` need tmux and stay Unix-only; use `link-grid.ps1`.

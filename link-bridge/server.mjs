@@ -8,7 +8,7 @@ import os from 'node:os'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { execFile, execFileSync } from 'node:child_process'
-import { ancestors } from './proc.mjs'
+import { ancestors, windowPid, winType } from './proc.mjs'
 
 const HOME = process.env.LINK_HOME || path.join(os.homedir(), '.session-link')
 const CLI = process.env.LINK_CLI || 'agent'
@@ -25,7 +25,7 @@ const WAKE_LOG = process.env.LINK_WAKE_LOG || ''
 const WAKE_GAP_MS = Number(process.env.LINK_WAKE_GAP_MS) || 1000 // text first, Enter a moment later: Codex treats fast Enter as part of a paste
 // Codex starts MCP servers from its shared app-server daemon: no terminal and no TMUX_PANE, so link-grid.sh passes LINK_PANE explicitly.
 const PANE = process.env.LINK_PANE || process.env.TMUX_PANE || ''
-const myTty = process.env.LINK_TTY ?? (() => {
+let myTty = process.env.LINK_TTY ?? (() => {
   try {
     const t = execFileSync('ps', ['-o', 'tty=', '-p', String(process.ppid)], { encoding: 'utf8' }).trim()
     return t && !t.startsWith('?') ? t.replace(/^\/dev\//, '') : ''
@@ -174,6 +174,9 @@ const typeInto = async (peer, line) => {
       await sleep(WAKE_GAP_MS)
       return (await run('tmux', ['send-keys', '-t', peer.pane, 'Enter'])) === ''
     }
+  }
+  if (peer.tty && peer.tty.startsWith('win:') && process.platform === 'win32') {
+    return winType(peer.tty.slice(4), line, WAKE_GAP_MS / 1000)
   }
   if (peer.tty && process.platform === 'darwin') {
     return (await run('osascript', ['-e', OSA, `/dev/${peer.tty}`, line, String(WAKE_GAP_MS / 1000)])) === 'ok'
@@ -453,9 +456,14 @@ process.on('SIGINT', bye)
 process.on('SIGTERM', bye)
 
 beat()
-ancestors(process.pid).then(c => {
+ancestors(process.pid).then(async c => {
   myChain = c
   beat()
+  // Windows has no tty: the session's terminal window (nearest ancestor that owns one) is its address, as win:<pid>.
+  if (process.platform === 'win32' && !myTty) {
+    const w = await windowPid(c)
+    if (w) { myTty = `win:${w}`; beat() }
+  }
 }).catch(() => {})
 setInterval(() => {
   beat()
