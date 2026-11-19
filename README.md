@@ -24,6 +24,7 @@ Shows the session name, model and reasoning effort, context fill (and where it c
 
 Lets your sessions on one machine find and message each other, and lets one act as the host.
 
+- The `multi-window` skill is bundled (`ai-link/skills/multi-window`, loads as `ai-link:multi-window`). Loading it makes the session the host automatically, unless it holds a task (worker) or another host is running.
 - `/sessions` lists the other running sessions. `/tell <name> <message>` and `/tellall <message>` send messages.
 - `/host` makes this session the host. `/assign <name|auto|all> <task>` hands out a task (`auto` picks the least-loaded worker; the host's model is also told how to run workers: contract first, even sizing, verify reports); `/board` shows the open tasks (finished ones clear themselves), `/board clear` empties the board and messages. `/setname <name> <new name>` renames a worker. The pane has a box for typing a task.
 - Workers answer through a `report` tool. While a worker holds a host task it is told to write no chat text and only report; a host's rename is applied by the plugin and never shown to the worker's model.
@@ -47,6 +48,7 @@ status_line = ["model-with-reasoning", "thread-name", "context-used", "five-hour
 
 ## Versions
 
+- **ai-link 1.5.0** — the `multi-window` skill is bundled in the plugin; loading it as `ai-link:multi-window` (or plain `multi-window`) makes the session the host.
 - **ai-link 1.4.1** — link-bridge: inside tmux, `link_peers` also lists AI sessions (claude, codex, agy, qwen, gemini) in other panes of the same window that have not joined link yet (1.4.0 added it, 1.4.1 documents it).
 - **ai-link 1.3.3** — default session names are `claude-<id>` (like `codex-<id>`, `agy-<id>`); the folder and user name are no longer part of them. Saved names are kept.
 - **ai-link 1.3.2** — link-bridge: a typed `[link MESSAGE ...]` now tells the receiver to answer with `link_tell` to the sender, so Codex workers stop replying only in their own chat.

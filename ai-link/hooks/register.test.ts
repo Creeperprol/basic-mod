@@ -525,3 +525,18 @@ test('a name saved for the session is kept over the new default', async ($, on) 
   await $.session.start({ source: 'startup', cwd: '/Users/paul' } as any)
   expect(store.get('peer:aaaa1111-0000')).toMatchObject({ name: 'worker-2' })
 })
+
+const skillRun = ($: any, skill: string) => $.skill.prompt({ skill, text: 'BASE PROMPT', frontmatter: {} } as any)
+
+for (const name of ['multi-window', 'ai-link:multi-window']) {
+  test(`loading the ${name} skill makes a free session the host and names the tools to load`, async ($, on) => {
+    const store = new Map<string, unknown>()
+    stand(on, [], store)
+    on('skill.prompt', (_$: any, e: any) => ({ text: e.text }))
+    await $.session.start({ source: 'startup', cwd: '/work/me' } as any)
+    const r = JSON.stringify(await skillRun($, name))
+    expect(r).toContain('BASE PROMPT')
+    expect(r).toContain('now the HOST')
+    expect(store.get('host')).toMatchObject({ id: 'aaaa1111-0000' })
+  })
+}
