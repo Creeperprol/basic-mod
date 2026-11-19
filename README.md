@@ -48,6 +48,7 @@ status_line = ["model-with-reasoning", "thread-name", "context-used", "five-hour
 
 ## Versions
 
+- **ai-link 1.6.0** — link-bridge: PowerShell versions of the agy and Codex helper scripts for Windows (untested).
 - **ai-link 1.5.0** — the `multi-window` skill is bundled in the plugin; loading it as `ai-link:multi-window` (or plain `multi-window`) makes the session the host.
 - **ai-link 1.4.1** — link-bridge: inside tmux, `link_peers` also lists AI sessions (claude, codex, agy, qwen, gemini) in other panes of the same window that have not joined link yet (1.4.0 added it, 1.4.1 documents it).
 - **ai-link 1.3.3** — default session names are `claude-<id>` (like `codex-<id>`, `agy-<id>`); the folder and user name are no longer part of them. Saved names are kept.

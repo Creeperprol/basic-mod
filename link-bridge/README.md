@@ -110,3 +110,7 @@ Pass `-w` to open a Terminal window that shows the agent working live (its comma
 ## Big grid: 12 workers plus one big Claude (`big-grid.sh`)
 
 `./big-grid.sh` opens one tmux window (session `link-grid`, needs `tmux`): the left 75% is a 3 x 4 grid (row 1 Codex `codex-1`..`codex-4`; row 2 Claude `claude-1`..`claude-4`; row 3 agy `agy-1`..`agy-4`) and the right 25% is one tall Claude, `claude-big`. Every pane registers with its tmux pane, so `link_tell` / `link_assign` type straight into it (a Codex or agy window opened as a plain Terminal tab has no pane and cannot be typed into). Attach with `tmux attach -t link-grid`; stop all 13 with `tmux kill-session -t link-grid`. Folder is `$HOME` and the Claude model is `sonnet`; edit `DIR` / `MODEL` at the top. Each session uses memory, so on an 8 GB Mac watch Memory Pressure. Codex and agy panes run with their approval and sandbox bypass flags, so only point `DIR` at a folder you trust.
+
+## Windows (untested)
+
+`agy-worker.ps1` and `codex-agent.ps1` are PowerShell versions of `agy-worker.sh` and `codex-agent.sh` (PowerShell 5.1 or 7). `-Window` / `-Watch` open a new PowerShell window instead of Terminal.app. They were written without access to a Windows machine, so check them before relying on them. Messages cannot be typed into a Windows window; use `listen.mjs install`. The grid scripts need tmux and stay Unix-only.
