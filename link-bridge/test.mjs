@@ -141,7 +141,7 @@ test('agy-worker.sh validates the model name and builds a worker command', async
   assert.match(ok.stdout, /link_report/)
 })
 
-test('agy-worker.sh refuses an interactive window in a folder agy does not trust, but not a headless run', async () => {
+test('agy-worker.sh refuses a folder agy does not trust (there is no headless mode)', async () => {
   const { spawnSync } = await import('node:child_process')
   const script = new URL('./agy-worker.sh', import.meta.url).pathname
   const trusted = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-trusted-'))
@@ -156,22 +156,9 @@ test('agy-worker.sh refuses an interactive window in a folder agy does not trust
   assert.match(no.stderr, /does not trust/)
   assert.equal(run('-w', '-d', trusted).status, 0)
   assert.equal(run('-w', '-d', nested).status, 0) // trust covers subfolders
-  assert.equal(run('-d', other).status, 0) // headless never asks
+  assert.equal(run('-d', other).status, 3) // no headless escape: the window always needs trust
   fs.writeFileSync(settings, 'not json')
   assert.equal(run('-w', '-d', other).status, 0) // unreadable settings do not block
-})
-
-test('agy-image.sh checks its arguments before starting anything', async () => {
-  const { spawnSync } = await import('node:child_process')
-  const script = new URL('./agy-image.sh', import.meta.url).pathname
-  const none = spawnSync('bash', [script], { encoding: 'utf8' })
-  assert.equal(none.status, 2)
-  assert.match(none.stderr, /description/)
-  const badModel = spawnSync('bash', [script, '-m', 'x;rm -rf /', 'a cat'], { encoding: 'utf8' })
-  assert.equal(badModel.status, 2)
-  assert.match(badModel.stderr, /invalid model name/)
-  const badTime = spawnSync('bash', [script, '-t', 'soon', 'a cat'], { encoding: 'utf8' })
-  assert.equal(badTime.status, 2)
 })
 
 test('codex-agent.sh checks its arguments and offers no dangerous sandbox', async () => {
@@ -366,4 +353,33 @@ test('link_peers lists AI sessions in other panes of the same tmux window that h
 test('the Windows SendKeys script escapes + ^ % ~ ( ) { } [ ] with real backslashes', async () => {
   const { WIN_SEND_SCRIPT } = await import('./proc.mjs')
   assert.ok(WIN_SEND_SCRIPT.includes('"[\\+\\^%~\\(\\)\\{\\}\\[\\]]"'), WIN_SEND_SCRIPT)
+})
+
+test('claude-worker.sh opens only trusted folders, names the worker, and never runs headless', async () => {
+  const { spawnSync } = await import('node:child_process')
+  const script = new URL('./claude-worker.sh', import.meta.url).pathname
+  const trusted = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'cw-trusted-')))
+  const other = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'cw-other-')))
+  const cfg = path.join(trusted, 'claude.json')
+  fs.writeFileSync(cfg, JSON.stringify({ projects: { [trusted]: { hasTrustDialogAccepted: true } } }))
+  const run = (...a) => spawnSync('bash', [script, '-n', ...a], { encoding: 'utf8', env: { ...process.env, CLAUDE_JSON: cfg } })
+  const ok = run('-d', trusted, '-N', 'claude-t1', '-m', 'sonnet', '-p', 'do x')
+  assert.equal(ok.status, 0)
+  assert.match(ok.stdout, /LINK_NAME=claude-t1 .*claude --model sonnet /)
+  assert.match(ok.stdout, /link_report/)
+  assert.doesNotMatch(ok.stdout, / -p /)
+  assert.equal(run('-d', other).status, 3)
+  assert.equal(run('-d', trusted, '-m', 'x;rm -rf /').status, 2)
+  assert.equal(run('-d', trusted, '-N', 'bad name').status, 2)
+})
+
+test('install-skill.sh copies the share skill into the skill folders that exist', async () => {
+  const { spawnSync } = await import('node:child_process')
+  const script = new URL('./install-skill.sh', import.meta.url).pathname
+  const a = fs.mkdtempSync(path.join(os.tmpdir(), 'sk-a-'))
+  const r = spawnSync('bash', [script, 'share'], { encoding: 'utf8', env: { ...process.env, SKILLS_DIRS: `${a}:${a}-missing` } })
+  assert.equal(r.status, 0)
+  assert.ok(fs.existsSync(path.join(a, 'share', 'SKILL.md')))
+  assert.match(r.stdout, /skip .*-missing/)
+  assert.equal(spawnSync('bash', [script, 'no/such'], { encoding: 'utf8' }).status, 2)
 })

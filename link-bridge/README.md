@@ -91,6 +91,12 @@ Things that bite:
 - **Models.** `agy models` lists them (here: `gemini-3.8-flash-low|medium|high`, `claude-sonnet-4-6`, `claude-opus-4-6-thinking`, `gpt-oss-120b-medium`). `--mode auto` is not available on this account.
 - **Pull, not push.** Like Codex and Qwen, an agy session only sees a task when it calls `link_inbox`, which is why the launcher's prompt loops on it. After two empty waits (about 200 s) the worker stops; start another or give it work sooner.
 
+## Open Claude from agy or Codex (`claude-worker.sh`) and the `share` skill
+
+`./claude-worker.sh -d DIR [-m haiku|sonnet|opus] [-N name] [-p "task"]` (Windows: `claude-worker.ps1`) opens a visible Claude Code window linked as `<name>`; any CLI that can run a shell command, including agy and Codex, can call it, then hand work over with `link_assign`. It refuses a folder Claude Code does not trust (read-only check of `~/.claude.json`) and never runs headless.
+
+The `share` skill (`../skills/share/SKILL.md`) teaches an agent how to open workers and share tasks across Claude, agy and Codex. `./install-skill.sh share` copies it into `~/.claude/skills`, `~/.gemini/antigravity-cli/skills` and `~/.agents/skills`; the ai-link plugin bundles it too.
+
 ## Codex as a one-shot agent (`codex-agent.sh`, tested on codex-cli 0.162.1)
 
 `./codex-agent.sh [-d dir] [-m model] [-s read-only|workspace-write] [-t seconds] [-o file] [-i image]... "the task"` runs `codex exec` for one task, prints its final message and lets it exit, the way a subagent would. Nothing stays running.

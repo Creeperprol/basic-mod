@@ -24,6 +24,7 @@ Shows the session name, model and reasoning effort, context fill (and where it c
 
 Lets your sessions on one machine find and message each other, and lets one act as the host.
 
+- The `share` skill (`ai-link/skills/share`) teaches Claude, agy and Codex to open workers and share tasks; `link-bridge/install-skill.sh share` installs it into agy and Codex too.
 - The `multi-window` skill is bundled (`ai-link/skills/multi-window`, loads as `ai-link:multi-window`). Loading it makes the session the host automatically, unless it holds a task (worker) or another host is running.
 - `/sessions` lists the other running sessions. `/tell <name> <message>` and `/tellall <message>` send messages.
 - `/host` makes this session the host. `/assign <name|auto|all> <task>` hands out a task (`auto` picks the least-loaded worker; the host's model is also told how to run workers: contract first, even sizing, verify reports); `/board` shows the open tasks (finished ones clear themselves), `/board clear` empties the board and messages. `/setname <name> <new name>` renames a worker. The pane has a box for typing a task.
@@ -48,6 +49,7 @@ status_line = ["model-with-reasoning", "thread-name", "context-used", "five-hour
 
 ## Versions
 
+- **ai-link 1.9.0** — `link-bridge/claude-worker.sh|ps1` lets agy and Codex open a visible Claude window as a worker; new `share` skill (`ai-link/skills/share`, installable into agy and Codex with `link-bridge/install-skill.sh share`).
 - **ai-link 1.8.0** — no headless workers: `agy-worker` and `codex-agent` always open a window; `agy-image.sh` removed.
 - **ai-link 1.7.1** — link-bridge: fixed the Windows SendKeys escape regex and agy trust path matching; Windows scripts checked under PowerShell 7.
 - **ai-link 1.7.0** — link-bridge: Windows push delivery (win:<pid> window address, SendKeys) and `link-grid.ps1` (untested).
