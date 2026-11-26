@@ -96,8 +96,10 @@ const capture = async (peers, ids) => {
   for (const id of ids) {
     const p = peers.find(x => x.id === id)
     if (!p) continue
-    const out = p.pane ? await run('tmux', ['capture-pane', '-p', '-t', p.pane, '-S', '-200']) : null
-    panes[id] = out ?? (p.pane ? '(could not read pane)' : 'No tmux pane for this session; run it inside tmux to view it here.')
+    const out = p.pane ? await run('tmux', ['capture-pane', '-p', '-e', '-t', p.pane, '-S', '-200']) : null
+    // The relay keeps the last 20000 chars; trim on a line break here so it never splits a color code.
+    const trimmed = out && out.length > 19000 ? out.slice(out.indexOf('\n', out.length - 19000) + 1) : out
+    panes[id] = trimmed ?? (p.pane ? '(could not read pane)' : 'No tmux pane for this session; run it inside tmux to view it here.')
   }
   return panes
 }
