@@ -21,7 +21,7 @@ if (-not $trusted) { [Console]::Error.WriteLine("Claude Code does not trust $Dir
 $prompt = "You are a worker in a multi-agent setup, linked as $Name. Tasks arrive typed into your prompt as [link TASK <id> ...] lines. Do exactly what a TASK says, then call link_report with that task_id and a short result (what you did, what you verified, what you did not). Write no chat text between tool calls. $Extra"
 $pq = "'" + ($prompt -replace "'", "''") + "'"; $dq = "'" + ($Dir -replace "'", "''") + "'"
 $m = if ($Model) { " --model $Model" } else { '' }
-$inner = "Set-Location -LiteralPath $dq; `$env:LINK_CLI='claude'; `$env:LINK_NAME='$Name'; `$env:CLAUDE_CODE_AUTO_COMPACT_WINDOW='100000'; claude$m $pq"
+$inner = "Remove-Item Env:NO_COLOR -ErrorAction SilentlyContinue; Set-Location -LiteralPath $dq; `$env:LINK_CLI='claude'; `$env:LINK_NAME='$Name'; `$env:CLAUDE_CODE_AUTO_COMPACT_WINDOW='100000'; claude$m $pq"
 if ($DryRun) { Write-Output $inner; exit 0 }
-Start-Process powershell -ArgumentList '-NoExit', '-NoProfile', '-EncodedCommand', ([Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($inner))) | Out-Null
+Start-Process wt -ArgumentList '-w','new','powershell','-NoExit','-NoProfile','-EncodedCommand', ([Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($inner))) | Out-Null
 Write-Output "Opened a Claude worker window in $Dir as $Name. Hand it work with link_assign to `"$Name`"."

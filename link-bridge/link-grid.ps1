@@ -13,13 +13,13 @@ $dq = "'" + ($Dir -replace "'", "''") + "'"
 for ($i = 1; $i -le $Count; $i++) {
   $cli = $Mix
   if ($Mix -eq 'mix') { $cli = if ($i % 2 -eq 1) { 'codex' } else { 'agy' } }
-  $pre = "Set-Location -LiteralPath $dq; `$env:LINK_CLI='$cli'; `$env:LINK_NAME='$cli-$i'; "
+  $pre = "Remove-Item Env:NO_COLOR -ErrorAction SilentlyContinue; Set-Location -LiteralPath $dq; `$env:LINK_CLI='$cli'; `$env:LINK_NAME='$cli-$i'; "
   switch ($cli) {
     'claude' { $cmd = $pre + "foreach (`$v in 'CLAUDECODE','CLAUDE_CODE_CHILD_SESSION','CLAUDE_CODE_SESSION_ID','CLAUDE_CODE_SESSION_ATTENDED','CLAUDE_CODE_MESSAGING_SOCKET','CLAUDE_CODE_MESSAGING_TOKEN','CLAUDE_CODE_ENTRYPOINT','AI_AGENT') { Remove-Item Env:`$v -ErrorAction SilentlyContinue }; claude --model $Model" }
-    'codex' { $cmd = $pre + "codex --dangerously-bypass-approvals-and-sandbox -C $dq -c 'mcp_servers.link.env.LINK_NAME=`"codex-$i`"'" }
+    'codex' { $cmd = $pre + "codex -c check_for_update_on_startup=false --dangerously-bypass-approvals-and-sandbox -C $dq -c 'mcp_servers.link.env.LINK_NAME=`"codex-$i`"'" }
     'agy' { $cmd = $pre + 'agy --dangerously-skip-permissions' }
   }
-  Start-Process powershell -ArgumentList '-NoExit', '-NoProfile', '-EncodedCommand', ([Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($cmd))) | Out-Null
+  Start-Process wt -ArgumentList '-w','new','powershell','-NoExit','-NoProfile','-EncodedCommand', ([Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($cmd))) | Out-Null
   Start-Sleep -Milliseconds 600
 }
 Write-Output "$Count windows opened in $Dir ($Mix). Close a window to stop its worker."

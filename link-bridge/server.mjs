@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // link-bridge: a stdio MCP server that lets coding-agent sessions (Claude Code, Codex, Qwen Code, ...)
 // find and message each other, and lets one session host and hand out work to the others.
-// State lives in plain files under LINK_HOME (default ~/.session-link); no dependencies. The server itself never
+// State lives in plain files under LINK_HOME (default ~/.ai-link); no dependencies. The server itself never
 // touches the network: lan.mjs, run separately, links machines on one network (see README).
 import fs from 'node:fs'
 import os from 'node:os'
@@ -10,7 +10,7 @@ import crypto from 'node:crypto'
 import { execFile, execFileSync } from 'node:child_process'
 import { ancestors, windowPid, winType } from './proc.mjs'
 
-const HOME = process.env.LINK_HOME || path.join(os.homedir(), '.session-link')
+const HOME = process.env.LINK_HOME || path.join(os.homedir(), '.ai-link')
 const CLI = process.env.LINK_CLI || 'agent'
 const CWD = process.cwd()
 const ID = crypto.randomUUID()
@@ -83,6 +83,14 @@ const peers = ({ includeSelf = false } = {}) => {
     if (p.id !== ID || includeSelf) out.push(p)
   }
   return out.sort((a, z) => z.seen - a.seen)
+}
+
+const isTmuxPeer = p => Boolean(p && (p.pane || p.remote))
+const scopedPeers = (includeNonTmux = false) => {
+  const all = peers()
+  if (includeNonTmux || process.env.LINK_TMUX_ONLY === '0') return { list: all, hidden: 0 }
+  const list = all.filter(isTmuxPeer)
+  return { list, hidden: all.length - list.length }
 }
 
 const pick = (list, q) => {
@@ -281,22 +289,23 @@ const show = m => {
 }
 
 // ---------- tools ----------
+const INCLUDE_NON_TMUX_PROP = { type: 'boolean', description: 'Default false: only AI sessions in tmux are used. Set true ONLY when the user explicitly asks to include non-tmux sessions.' }
 const TOOLS = [
-  { name: 'link_peers', description: 'List the other running agent sessions (Claude Code, Codex, Qwen, ...) you can message.', inputSchema: { type: 'object', properties: {} } },
-  { name: 'link_tell', description: 'Send a message to one other session, by name or id prefix.', inputSchema: { type: 'object', properties: { to: { type: 'string' }, text: { type: 'string' } }, required: ['to', 'text'] } },
-  { name: 'link_tellall', description: 'Send a message to every other session.', inputSchema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] } },
+  { name: 'link_peers', description: 'List running agent sessions in tmux (default: only tmux AI sessions unless include_non_tmux is true because the user asked).', inputSchema: { type: 'object', properties: { include_non_tmux: INCLUDE_NON_TMUX_PROP } } },
+  { name: 'link_tell', description: 'Send a message to one other session in tmux (pass include_non_tmux: true only when the user explicitly asks for a non-tmux session).', inputSchema: { type: 'object', properties: { to: { type: 'string' }, text: { type: 'string' }, include_non_tmux: INCLUDE_NON_TMUX_PROP }, required: ['to', 'text'] } },
+  { name: 'link_tellall', description: 'Send a message to every other tmux session (pass include_non_tmux: true only when the user explicitly asks).', inputSchema: { type: 'object', properties: { text: { type: 'string' }, include_non_tmux: INCLUDE_NON_TMUX_PROP }, required: ['text'] } },
   { name: 'link_inbox', description: 'Fallback only: messages, tasks and results are normally typed into your prompt as [link ...] lines. Reads and clears anything that could not be typed. wait_seconds (max 120) waits for something to arrive.', inputSchema: { type: 'object', properties: { wait_seconds: { type: 'number' } } } },
   { name: 'link_host', description: 'Make this session the host that hands out work (on: true), or stop hosting (on: false).', inputSchema: { type: 'object', properties: { on: { type: 'boolean' } } } },
-  { name: 'link_assign', description: 'Host only. Give a task to a worker session by name, or "all". Results are typed into your prompt as [link RESULT ...] lines and shown by link_board.', inputSchema: { type: 'object', properties: { worker: { type: 'string' }, task: { type: 'string' } }, required: ['worker', 'task'] } },
+  { name: 'link_assign', description: 'Host only. Give a task to a tmux worker session by name, or "all" (only tmux AIs by default; pass include_non_tmux: true only when the user explicitly asks). Results are typed into your prompt as [link RESULT ...] lines and shown by link_board.', inputSchema: { type: 'object', properties: { worker: { type: 'string' }, task: { type: 'string' }, include_non_tmux: INCLUDE_NON_TMUX_PROP }, required: ['worker', 'task'] } },
   { name: 'link_report', description: 'Worker only. Send the result of an assigned task back to the host.', inputSchema: { type: 'object', properties: { task_id: { type: 'string' }, result: { type: 'string' } }, required: ['task_id', 'result'] } },
   { name: 'link_board', description: 'Host only. Show the task board; clear: true drops finished tasks.', inputSchema: { type: 'object', properties: { clear: { type: 'boolean' } } } },
-  { name: 'link_rename', description: 'Host only. Rename a worker session as listed by link_peers.', inputSchema: { type: 'object', properties: { worker: { type: 'string' }, name: { type: 'string' } }, required: ['worker', 'name'] } },
+  { name: 'link_rename', description: 'Host only. Rename a tmux worker session as listed by link_peers.', inputSchema: { type: 'object', properties: { worker: { type: 'string' }, name: { type: 'string' }, include_non_tmux: INCLUDE_NON_TMUX_PROP }, required: ['worker', 'name'] } },
 ]
 
 const ok = text => ({ content: [{ type: 'text', text }] })
 const fail = text => ({ content: [{ type: 'text', text }], isError: true })
 
-const listWith = list => (list.length ? list.map(p => `${p.name}  [${p.cli}]  ${path.basename(p.cwd)}${p.remote ? `  on ${p.machine}` : ''}  (${p.id.slice(0, 8)})`).join('\n') : 'No other sessions running.')
+const listWith = list => (list.length ? list.map(p => `${p.name}  [${p.cli}]  ${path.basename(p.cwd)}${p.pane ? `  tmux:${p.pane}` : ''}${p.remote ? `  on ${p.machine}` : ''}  (${p.id.slice(0, 8)})`).join('\n') : 'No tmux AI sessions running.')
 
 // A required argument that is missing or empty is refused, so a model that misnames one ("message" for "text")
 // gets told and retries, instead of the other session receiving the word "undefined".
@@ -312,22 +321,30 @@ const call = async (name, a) => {
   switch (name) {
     case 'link_peers': {
       const h = hostRecord()
-      const list = peers()
+      const { list, hidden } = scopedPeers(Boolean(a.include_non_tmux))
       const here = (await windowAis()).filter(w => !list.some(p => p.pane === w.pane))
       const extra = here.length ? `\nIn this tmux window, not linked yet: ${here.map(w => `${w.cli} (pane ${w.pane})`).join(', ')}. Ask the person to start link in them, or use link-grid.sh.` : ''
-      return ok(`You are "${myName}" [${CLI}]${amHost() ? ' (host)' : ''}.${h && !amHost() ? ` Host: ${h.name}.` : ''}\n${listWith(list)}${extra}`)
+      const hiddenNote = hidden > 0 ? `\n(${hidden} non-tmux session(s) hidden; only tmux AIs are used unless the user asks — pass include_non_tmux: true if asked.)` : ''
+      return ok(`You are "${myName}" [${CLI}]${amHost() ? ' (host)' : ''}.${h && !amHost() ? ` Host: ${h.name}.` : ''}\n${listWith(list)}${extra}${hiddenNote}`)
     }
     case 'link_tell': {
-      const m = pick(peers(), a.to)
-      if (m.length === 0) return fail(`No session matches "${a.to}".`)
+      const includeNonTmux = Boolean(a.include_non_tmux)
+      const m = pick(scopedPeers(includeNonTmux).list, a.to)
+      if (m.length === 0) {
+        if (!includeNonTmux) {
+          const nonTmux = pick(peers(), a.to)
+          if (nonTmux.length > 0) return fail(`"${nonTmux[0].name}" is outside tmux. Only AI sessions in tmux are used unless the user explicitly asks (pass include_non_tmux: true).`)
+        }
+        return fail(`No session matches "${a.to}".`)
+      }
       if (m.length > 1) return fail(`"${a.to}" is ambiguous: ${m.map(p => p.name).join(', ')}`)
       send(m[0].id, 'msg', { text: String(a.text) })
       return ok(`Sent to ${m[0].name}.`)
     }
     case 'link_tellall': {
-      const list = peers()
+      const { list } = scopedPeers(Boolean(a.include_non_tmux))
       for (const p of list) send(p.id, 'msg', { text: String(a.text) })
-      return ok(list.length ? `Sent to ${list.length} session(s).` : 'No other sessions to tell.')
+      return ok(list.length ? `Sent to ${list.length} session(s).` : 'No tmux AI sessions to tell.')
     }
     case 'link_inbox': {
       const until = Date.now() + Math.min(120, Math.max(0, Number(a.wait_seconds) || 0)) * 1000
@@ -351,9 +368,16 @@ const call = async (name, a) => {
     }
     case 'link_assign': {
       if (!amHost()) return fail('This session is not the host. Call link_host first.')
-      const list = peers()
+      const includeNonTmux = Boolean(a.include_non_tmux)
+      const { list } = scopedPeers(includeNonTmux)
       const chosen = a.worker === 'all' ? list : pick(list, a.worker)
-      if (chosen.length === 0) return fail(`No session matches "${a.worker}".`)
+      if (chosen.length === 0) {
+        if (a.worker !== 'all' && !includeNonTmux) {
+          const nonTmux = pick(peers(), a.worker)
+          if (nonTmux.length > 0) return fail(`"${nonTmux[0].name}" is outside tmux. Only AI sessions in tmux are used unless the user explicitly asks (pass include_non_tmux: true).`)
+        }
+        return fail(`No session matches "${a.worker}".`)
+      }
       if (a.worker !== 'all' && chosen.length > 1) return fail(`"${a.worker}" is ambiguous: ${chosen.map(p => p.name).join(', ')}`)
       const tasks = loadTasks(ID)
       const out = []
@@ -391,7 +415,7 @@ const call = async (name, a) => {
     }
     case 'link_rename': {
       if (!amHost()) return fail('This session is not the host.')
-      const m = pick(peers(), a.worker)
+      const m = pick(scopedPeers(Boolean(a.include_non_tmux)).list, a.worker)
       if (m.length !== 1) return fail(m.length ? `"${a.worker}" is ambiguous.` : `No session matches "${a.worker}".`)
       send(m[0].id, 'rename', { name: String(a.name) })
       return ok(`Asked ${m[0].name} to rename itself to "${String(a.name).slice(0, 60)}".`)
@@ -402,7 +426,7 @@ const call = async (name, a) => {
 }
 
 // ---------- MCP over stdio ----------
-const INSTRUCTIONS = `You can message other coding-agent sessions on this machine (and on other machines on the same network when lan.mjs runs; link_peers shows them as "on <machine>"). Call link_peers to see them, link_tell to message one, and messages, tasks and results sent to you are typed into your prompt automatically (tagged [link ...]); link_inbox is only a fallback for anything that could not be typed. One session can call link_host and then link_assign tasks; a worker answers with link_report. Your chat text is never seen by other sessions: answer a [link MESSAGE ...] with link_tell to its sender, and a [link TASK ...] with link_report.`
+const INSTRUCTIONS = `You can message other coding-agent sessions on this machine (and on other machines on the same network when lan.mjs runs; link_peers shows them as "on <machine>"). By default ONLY AI sessions running inside tmux are used unless the user explicitly asks for non-tmux sessions (pass include_non_tmux: true). Call link_peers to see tmux sessions, link_tell to message one, and messages, tasks and results sent to you are typed into your prompt automatically (tagged [link ...]); link_inbox is only a fallback for anything that could not be typed. One session can call link_host and then link_assign tasks; a worker answers with link_report. Your chat text is never seen by other sessions: answer a [link MESSAGE ...] with link_tell to its sender, and a [link TASK ...] with link_report.`
 
 const reply = (id, result) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id, result }) + '\n')
 const error = (id, code, message) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id, error: { code, message } }) + '\n')

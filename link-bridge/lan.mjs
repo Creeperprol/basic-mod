@@ -8,7 +8,7 @@
 //   node lan.mjs join <key>   save that key on each other machine
 //   node lan.mjs              run (keep it open; Ctrl-C stops it)
 //
-// Env: LINK_HOME (default ~/.session-link), LINK_LAN_KEY (overrides the saved key),
+// Env: LINK_HOME (default ~/.ai-link), LINK_LAN_KEY (overrides the saved key),
 //   LINK_LAN_UDP (discovery port, default 47811), LINK_LAN_HTTP (message port, default 47812),
 //   LINK_LAN_PEERS="192.168.1.20,host:udpPort" (machines to reach directly when the network blocks broadcast),
 //   LINK_LAN_BROADCAST=0 (announce only to LINK_LAN_PEERS; the tests use it).
@@ -19,7 +19,7 @@ import http from 'node:http'
 import dgram from 'node:dgram'
 import crypto from 'node:crypto'
 
-const HOME = process.env.LINK_HOME || path.join(os.homedir(), '.session-link')
+const HOME = process.env.LINK_HOME || path.join(os.homedir(), '.ai-link')
 const UDP_PORT = Number(process.env.LINK_LAN_UDP) || 47811
 const HTTP_PORT = Number(process.env.LINK_LAN_HTTP) || 47812
 const STALE_MS = 60_000

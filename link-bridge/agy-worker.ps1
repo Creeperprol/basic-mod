@@ -41,7 +41,7 @@ $pq = "'" + ($prompt -replace "'", "''") + "'"
 $dq = "'" + ($Dir -replace "'", "''") + "'"
 $utf16 = { param($t) [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($t)) }
 
-$inner = "Set-Location -LiteralPath $dq; agy --dangerously-skip-permissions --model $Model -i $pq"
+$inner = "Remove-Item Env:NO_COLOR -ErrorAction SilentlyContinue; Set-Location -LiteralPath $dq; agy --dangerously-skip-permissions --model $Model -i $pq"
 if ($DryRun) { Write-Output $inner; exit 0 }
-Start-Process powershell -ArgumentList '-NoExit', '-NoProfile', '-EncodedCommand', (& $utf16 $inner) | Out-Null
+Start-Process wt -ArgumentList '-w','new','powershell','-NoExit','-NoProfile','-EncodedCommand', (& $utf16 $inner) | Out-Null
 Write-Output "Opened an agy worker window in $Dir (model $Model)."

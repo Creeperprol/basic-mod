@@ -32,7 +32,7 @@ try {
   '' | Set-Content -LiteralPath $err
   if ($true) { # always show a window: no headless runs
     $w = "Write-Host 'codex-agent: working...'; Get-Content -LiteralPath '$err' -Wait"
-    Start-Process powershell -ArgumentList '-NoProfile', '-EncodedCommand', ([Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($w))) | Out-Null
+    Start-Process wt -ArgumentList '-w','new','powershell','-NoProfile','-EncodedCommand', ([Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($w))) | Out-Null
   }
   $p = Start-Process codex -ArgumentList (($a | ForEach-Object { Quote $_ }) -join ' ') -NoNewWindow -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
   if (-not $p.WaitForExit($Seconds * 1000)) { try { & taskkill /PID $p.Id /T /F | Out-Null } catch {} }

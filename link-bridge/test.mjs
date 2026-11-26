@@ -9,9 +9,11 @@ const HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'link-'))
 const SERVER = new URL('./server.mjs', import.meta.url).pathname
 
 // A tiny MCP client over stdio.
+let paneSeq = 100
 const start = (cli, name, extra = {}) => {
   // LINK_WAKE=0: the servers here would otherwise type into the terminal that runs the tests.
-  const p = spawn('node', [SERVER], { env: { ...process.env, LINK_WAKE: '0', LINK_HOME: HOME, LINK_CLI: cli, LINK_NAME: name, ...extra }, stdio: ['pipe', 'pipe', 'inherit'] })
+  const paneEnv = 'LINK_PANE' in extra ? {} : { LINK_PANE: `%${++paneSeq}` }
+  const p = spawn('node', [SERVER], { env: { ...process.env, LINK_WAKE: '0', LINK_HOME: HOME, LINK_CLI: cli, LINK_NAME: name, ...paneEnv, ...extra }, stdio: ['pipe', 'pipe', 'inherit'] })
   let n = 0
   const waiting = new Map()
   let buf = ''
@@ -176,7 +178,7 @@ test('codex-agent.sh checks its arguments and offers no dangerous sandbox', asyn
 })
 
 test('default session names are <cli>-<id>, with no folder or user name in them', async () => {
-  const mk = (cli, cwd) => spawn('node', [SERVER], { cwd, env: { ...process.env, LINK_HOME: HOME, LINK_CLI: cli, LINK_NAME: '' }, stdio: ['pipe', 'pipe', 'inherit'] })
+  const mk = (cli, cwd) => spawn('node', [SERVER], { cwd, env: { ...process.env, LINK_HOME: HOME, LINK_CLI: cli, LINK_NAME: '', LINK_PANE: `%${++paneSeq}` }, stdio: ['pipe', 'pipe', 'inherit'] })
   const watcher = start('claude', 'watcher')
   await watcher.init()
   const a = mk('claude', os.homedir())
@@ -193,7 +195,7 @@ test('default session names are <cli>-<id>, with no folder or user name in them'
 
 test('push delivery types tasks and results into the prompt, so no link_inbox polling is needed', async () => {
   const log = path.join(HOME, 'wake.log')
-  const wake = tty => ({ LINK_WAKE: '1', LINK_WAKE_LOG: log, LINK_TTY: tty, LINK_WAKE_GAP_MS: '10' })
+  const wake = tty => ({ LINK_WAKE: '1', LINK_WAKE_LOG: log, LINK_TTY: tty, LINK_PANE: '', LINK_TMUX_ONLY: '0', LINK_WAKE_GAP_MS: '10' })
   const host = start('claude', 'pushboss', wake('ttys901'))
   const worker = start('codex', 'pushworker', wake('ttys902'))
   const quiet = start('agy', 'pushquiet', wake(''))
@@ -382,4 +384,284 @@ test('install-skill.sh copies the share skill into the skill folders that exist'
   assert.ok(fs.existsSync(path.join(a, 'share', 'SKILL.md')))
   assert.match(r.stdout, /skip .*-missing/)
   assert.equal(spawnSync('bash', [script, 'no/such'], { encoding: 'utf8' }).status, 2)
+})
+
+test('picker.mjs merges Claude, Codex and agy sessions from bridge, tmux and processes, and renders a clickable left sidebar', async () => {
+  const { buildSessionGroups, renderSidebar, focusSession } = await import('./picker.mjs')
+  const now = 10_000
+  const { groups, flat } = buildSessionGroups({
+    now,
+    hostId: 'id-claude',
+    bridgePeers: [
+      { id: 'id-claude', name: 'claude-host', cli: 'claude', cwd: '/work/app', pid: 100, tty: 'ttys001', pane: '', seen: now },
+      { id: 'id-codex-new', name: 'codex-1', cli: 'codex', cwd: '/work/app', pid: 201, tty: '', pane: '%2', seen: now },
+      { id: 'id-codex-old', name: 'codex-stale', cli: 'codex', cwd: '/work/app', pid: 202, tty: '', pane: '', seen: now },
+      { id: 'id-agy', name: 'agy-1', cli: 'agy', cwd: '/work/app', pid: 301, tty: 'ttys003', pane: '', seen: now },
+    ],
+    tmuxPanes: [
+      { cli: 'codex', pid: 201, session: 'ai-link', windowIndex: 1, windowName: 'codex-1', pane: '%2', cwd: '/work/app', paneActive: false, windowActive: false, tty: 'ttys010' },
+      { cli: 'agy', pid: 399, session: 'ai-link', windowIndex: 2, windowName: 'agy-unlinked', pane: '%3', cwd: '/work/other', paneActive: true, windowActive: true, tty: 'ttys011' },
+    ],
+    procWindows: [
+      { cli: 'claude', tty: 'ttys001', pid: 100, cwd: '/work/app' },
+      { cli: 'codex', tty: 'ttys002', pid: 202, cwd: '/work/app' },
+      { cli: 'agy', tty: 'ttys003', pid: 301, cwd: '/work/app' },
+    ],
+    etimes: new Map([[201, 10], [202, 500]]),
+  })
+
+  assert.deepEqual(groups.map(g => g.cli), ['claude', 'codex', 'agy'])
+  assert.equal(groups[0].items.length, 1)
+  assert.equal(groups[0].items[0].isHost, true)
+  assert.equal(groups[1].items.some(i => i.name === 'codex-1' && i.pane === '%2'), true)
+  assert.equal(groups[2].items.length, 2)
+  assert.equal(groups[2].items.some(i => i.name === 'agy-unlinked' && i.pane === '%3'), true)
+
+  const { screen, rowMap } = renderSidebar({ groups, selectedIndex: 1, width: 32, height: 24, mode: 'tmux', now })
+  assert.match(screen, /AI-LINK WORKSPACE/)
+  assert.match(screen, /CLAUDE/)
+  assert.match(screen, /CODEX/)
+  assert.match(screen, /AGY/)
+  assert.equal(rowMap.size, flat.length)
+
+  const logFile = path.join(HOME, 'picker-focus.log')
+  const res = await focusSession(flat[0], { logFile })
+  assert.equal(res.ok, true)
+  assert.match(fs.readFileSync(logFile, 'utf8'), /claude-host/)
+})
+
+test('picker.sh and link-workspace.sh validate arguments and build commands in dry-run mode', async () => {
+  const { spawnSync } = await import('node:child_process')
+  const pickerSh = new URL('./picker.sh', import.meta.url).pathname
+  const wsSh = new URL('./link-workspace.sh', import.meta.url).pathname
+
+  const pFull = spawnSync('bash', [pickerSh, '-n', '-d', os.tmpdir()], { encoding: 'utf8' })
+  assert.equal(pFull.status, 0)
+  assert.match(pFull.stdout, /fullscreen: .*picker\.mjs/)
+  const pOk = spawnSync('bash', [pickerSh, '-n', '-w', '320', '-d', os.tmpdir()], { encoding: 'utf8' })
+  assert.equal(pOk.status, 0)
+  assert.match(pOk.stdout, /sidebar\(320px\): .*picker\.mjs/)
+  assert.equal(spawnSync('bash', [pickerSh, '-n', '-w', '50'], { encoding: 'utf8' }).status, 2)
+
+  const wOk = spawnSync('bash', [wsSh, '-n', '-s', 'work-1', '-m', 'all', '-w', '30', '-d', os.tmpdir()], { encoding: 'utf8' })
+  assert.equal(wOk.status, 0)
+  assert.match(wOk.stdout, /workspace session=work-1 mode=all width=30/)
+  assert.equal(spawnSync('bash', [wsSh, '-n', '-m', 'bogus'], { encoding: 'utf8' }).status, 2)
+  assert.equal(spawnSync('bash', [wsSh, '-n', '-w', '10'], { encoding: 'utf8' }).status, 2)
+})
+
+test('picker.mjs discovers past Claude, Codex and agy sessions and resumes/continues them', async () => {
+  const { readPastSessions, buildSessionGroups, renderSidebar, focusSession, continueLatestCli, resumeCommandFor, continueCommandFor, ago } = await import('./picker.mjs')
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'picker-past-'))
+  const claudeDir = path.join(root, 'claude-projects', '-work-app')
+  const codexDir = path.join(root, 'codex-sessions', '2026', '11', '24')
+  const agyDir = path.join(root, 'agy')
+  fs.mkdirSync(claudeDir, { recursive: true })
+  fs.mkdirSync(codexDir, { recursive: true })
+  fs.mkdirSync(agyDir, { recursive: true })
+
+  fs.writeFileSync(path.join(claudeDir, '11111111-1111-1111-1111-111111111111.jsonl'), [
+    JSON.stringify({ type: 'mode', mode: 'normal', sessionId: '11111111-1111-1111-1111-111111111111' }),
+    JSON.stringify({ type: 'user', cwd: '/work/app', sessionId: '11111111-1111-1111-1111-111111111111', message: { role: 'user', content: 'build the login screen' } }),
+  ].join('\n') + '\n')
+
+  fs.writeFileSync(path.join(codexDir, 'rollout-2026-11-24T10-00-00-22222222-2222-2222-2222-222222222222.jsonl'), [
+    JSON.stringify({ type: 'session_meta', payload: { id: '22222222-2222-2222-2222-222222222222', cwd: '/work/api' } }),
+    JSON.stringify({ type: 'response_item', payload: { role: 'user', content: [{ type: 'input_text', text: '<environment_context>skip me</environment_context>' }] } }),
+    JSON.stringify({ type: 'response_item', payload: { role: 'user', content: [{ type: 'input_text', text: 'fix flaky webhook test' }] } }),
+  ].join('\n') + '\n')
+
+  fs.writeFileSync(path.join(agyDir, 'history.jsonl'), [
+    JSON.stringify({ display: '/clear', timestamp: 1000, workspace: '/work/web', conversationId: '33333333-3333-3333-3333-333333333333', type: 'slash_command' }),
+    JSON.stringify({ display: 'add dark mode toggle', timestamp: 2000, workspace: '/work/web', conversationId: '33333333-3333-3333-3333-333333333333' }),
+  ].join('\n') + '\n')
+
+  const past = readPastSessions({
+    claudeDir: path.join(root, 'claude-projects'),
+    codexDir: path.join(root, 'codex-sessions'),
+    agyDir,
+    limitPerCli: 5,
+  })
+  assert.equal(past.length, 3)
+  assert.equal(past.find(p => p.cli === 'claude')?.name, 'build the login screen')
+  assert.equal(past.find(p => p.cli === 'codex')?.name, 'fix flaky webhook test')
+  assert.equal(past.find(p => p.cli === 'agy')?.name, 'add dark mode toggle')
+
+  const now = 10_000_000
+  const { groups, flat } = buildSessionGroups({
+    now,
+    bridgePeers: [{ id: 'live-claude', name: 'claude-live', cli: 'claude', cwd: '/work/app', pid: 100, tty: 'ttys001', pane: '', seen: now }],
+    procWindows: [{ cli: 'claude', tty: 'ttys001', pid: 100, cwd: '/work/app' }],
+    pastSessions: past,
+  })
+  assert.equal(groups[0].items[0].isPast, undefined)
+  assert.equal(groups[0].items[1].isPast, true)
+  assert.equal(flat.filter(i => i.isPast).length, 3)
+
+  // Render includes past icon (↺) and live/past counts (narrow sidebar)
+  const { screen, rowMap } = renderSidebar({ groups, selectedIndex: 1, width: 36, height: 24, now })
+  assert.match(screen, /↺/)
+  assert.match(screen, /1 live · 1 past/)
+  assert.equal(rowMap.size, flat.length)
+
+  // Wide full-screen render draws 3 side-by-side tables (AGY, CLAUDE, CODEX) with 2D hitMap
+  const wide = renderSidebar({ groups, selectedIndex: 0, width: 120, height: 30, now })
+  assert.equal(wide.layout, 'tables')
+  assert.match(wide.screen, /AI-LINK SESSION PICKER/)
+  assert.match(wide.screen, /AGY \(0 live · 1 past\)/)
+  assert.match(wide.screen, /CLAUDE \(1 live · 1 past\)/)
+  assert.match(wide.screen, /CODEX \(0 live · 1 past\)/)
+  assert.equal(wide.hitMap.length, flat.length)
+  // All 3 columns have distinct horizontal ranges
+  const colStarts = new Set(wide.hitMap.map(h => h.colStart))
+  assert.equal(colStarts.size, 3)
+
+  // Resume commands and focusSession delegation
+  assert.match(resumeCommandFor('claude', '11111111-1111-1111-1111-111111111111'), /claude --resume '11111111-1111-1111-1111-111111111111'/)
+  assert.match(resumeCommandFor('codex', '22222222-2222-2222-2222-222222222222', '/work/api'), /codex resume -C '\/work\/api'.*'22222222-2222-2222-2222-222222222222'/)
+  assert.match(resumeCommandFor('agy', '33333333-3333-3333-3333-333333333333'), /agy --resume '33333333-3333-3333-3333-333333333333'/)
+  assert.equal(resumeCommandFor('claude', 'bad;rm -rf /'), '')
+  assert.match(continueCommandFor('claude'), /claude --continue/)
+  assert.match(continueCommandFor('codex'), /codex resume --last/)
+  assert.match(continueCommandFor('agy'), /agy --continue/)
+  assert.equal(ago(3 * 86_400_000), '3d')
+
+  const logFile = path.join(root, 'resume.log')
+  const r1 = await focusSession(groups[0].items[1], { logFile, dir: root })
+  assert.equal(r1.ok, true)
+  const r2 = await continueLatestCli('agy', { logFile, dir: root })
+  assert.equal(r2.ok, true)
+  const r3 = await focusSession(groups[0].items[1], { logFile, dir: root, inTmux: true })
+  assert.equal(r3.ok, true)
+  const logLines = fs.readFileSync(logFile, 'utf8').trim().split('\n').map(l => JSON.parse(l))
+  assert.equal(logLines[0].action, 'resume')
+  assert.equal(logLines[0].sessionId, '11111111-1111-1111-1111-111111111111')
+  assert.equal(logLines[1].action, 'continue')
+  assert.equal(logLines[1].cli, 'agy')
+  assert.equal(logLines[2].action, 'resume')
+  assert.equal(logLines[2].inTmux, true)
+
+  // Non-AI tmux windows appear in a dedicated TMUX WINDOWS panel in the full-screen view
+  const withTmux = buildSessionGroups({
+    now,
+    tmuxPanes: [
+      { cli: 'tmux', pid: 400, session: 'dev', windowIndex: 0, windowName: 'server', pane: '%9', cwd: '/work/api', paneActive: true, windowActive: true, attached: false, tty: 'ttys020' },
+    ],
+    pastSessions: past,
+  })
+  const tmuxWide = renderSidebar({ groups: withTmux.groups, selectedIndex: withTmux.flat.length - 1, width: 120, height: 30, now })
+  assert.match(tmuxWide.screen, /\[\+Win\]/)
+  assert.match(tmuxWide.screen, /\[\+SplitH\]/)
+  assert.match(tmuxWide.screen, /\[\+SplitV\]/)
+  assert.match(tmuxWide.screen, /TMUX WINDOWS \(1\)/)
+  assert.match(tmuxWide.screen, /dev:0 server/)
+  assert.match(tmuxWide.screen, /detached/)
+  assert.equal(tmuxWide.hitMap.length, withTmux.flat.length)
+  assert.ok(tmuxWide.buttonMap.some(b => b.action === 'new-window' && b.row === 1 && b.colStart === 2))
+  assert.ok(tmuxWide.buttonMap.some(b => b.action === 'split-h'))
+  assert.ok(tmuxWide.buttonMap.some(b => b.action === 'split-v'))
+  assert.ok(tmuxWide.buttonMap.some(b => b.action === 'resize-left'))
+  assert.ok(tmuxWide.buttonMap.some(b => b.action === 'resize-right'))
+  assert.ok(tmuxWide.buttonMap.some(b => b.action === 'rename'))
+  assert.ok(tmuxWide.buttonMap.some(b => b.action === 'kill'))
+
+  // tmuxControlAction logs all tmux window/pane control actions cleanly
+  const { tmuxControlAction } = await import('./picker.mjs')
+  const tmuxItem = withTmux.flat[withTmux.flat.length - 1]
+  for (const act of ['new-window', 'split-h', 'split-v', 'resize-left', 'resize-right', 'zoom', 'kill']) {
+    const r = await tmuxControlAction(act, tmuxItem, { logFile, dir: root })
+    assert.equal(r.ok, true)
+  }
+  const rRen = await tmuxControlAction('rename', tmuxItem, { logFile, dir: root, newName: 'api-srv' })
+  assert.equal(rRen.ok, true)
+  const allLogs = fs.readFileSync(logFile, 'utf8')
+  assert.match(allLogs, /"action":"tmux:new-window"/)
+  assert.match(allLogs, /"action":"tmux:resize-right"/)
+  assert.match(allLogs, /"newName":"api-srv"/)
+
+  // Regression: narrow 23-col tmux sidebar with 169 past sessions never wraps lines or shifts buttonMap off row 2
+  const manyPast = Array.from({ length: 169 }, (_, i) => ({
+    cli: 'claude',
+    sessionId: `sess-${i}`,
+    name: `long session title number ${i}`,
+    cwd: '/Users/pauldenchat',
+    seen: now - i * 60_000,
+  }))
+  const narrowMany = buildSessionGroups({ now, pastSessions: manyPast })
+  const narrow32 = renderSidebar({ groups: narrowMany.groups, selectedIndex: 0, width: 32, height: 24, mode: 'tmux', now })
+  assert.ok(narrow32.buttonMap.some(b => b.action === 'split-h' && b.label === '[+H]' && b.row === 2))
+  assert.ok(narrow32.buttonMap.some(b => b.action === 'split-v' && b.label === '[+V]' && b.row === 2))
+  const narrowRender = renderSidebar({ groups: narrowMany.groups, selectedIndex: 0, width: 23, height: 24, mode: 'tmux', now })
+  assert.match(narrowRender.screen, /\x1b\[\?7l/)
+  assert.ok(narrowRender.buttonMap.every(b => b.row === 2))
+  assert.ok(narrowRender.buttonMap.some(b => b.action === 'split-h'))
+  assert.ok(narrowRender.buttonMap.some(b => b.action === 'split-v'))
+  // Verify every positioned line fits within 23 visible chars
+  const plainLines = narrowRender.screen
+    .replace(/\x1b\[\?7l\x1b\[H\x1b\[2J/, '')
+    .split(/\x1b\[\d+;1H/)
+    .filter(Boolean)
+    .map(l => l.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, ''))
+  for (const l of plainLines) {
+    assert.ok(l.length <= 23, `line wrapped (${l.length} > 23): "${l}"`)
+  }
+})
+
+test('link-bridge uses only tmux AI peers by default unless include_non_tmux is explicitly requested', async () => {
+  const tmuxHome = fs.mkdtempSync(path.join(os.tmpdir(), 'link-tmux-only-'))
+  const host = start('claude', 'tmux-host', { LINK_HOME: tmuxHome, LINK_PANE: '%10' })
+  const tmuxWorker = start('agy', 'tmux-agy', { LINK_HOME: tmuxHome, LINK_PANE: '%11' })
+  const looseWorker = start('codex', 'loose-worker', { LINK_HOME: tmuxHome, LINK_PANE: '', LINK_TTY: 'ttys888' })
+  for (const s of [host, tmuxWorker, looseWorker]) await s.init()
+  await new Promise(r => setTimeout(r, 300))
+
+  // Default link_peers hides non-tmux session and shows hidden count note
+  const peersDefault = await host.tool('link_peers')
+  assert.match(peersDefault.text, /tmux-agy\s+\[agy\]/)
+  assert.doesNotMatch(peersDefault.text, /loose-worker/)
+  assert.match(peersDefault.text, /1 non-tmux session\(s\) hidden/)
+
+  // Default link_host + link_assign(all) assigns ONLY to tmux-agy
+  await host.tool('link_host', { on: true })
+  const assignAll = await host.tool('link_assign', { worker: 'all', task: 'tmux task' })
+  assert.match(assignAll.text, /tmux-agy/)
+  assert.doesNotMatch(assignAll.text, /loose-worker/)
+
+  // Direct link_assign / link_tell to a non-tmux peer refuses by default
+  const assignRefused = await host.tool('link_assign', { worker: 'loose-worker', task: 'x' })
+  assert.equal(assignRefused.isError, true)
+  assert.match(assignRefused.text, /outside tmux/)
+  const tellRefused = await host.tool('link_tell', { to: 'loose-worker', text: 'hi' })
+  assert.equal(tellRefused.isError, true)
+  assert.match(tellRefused.text, /outside tmux/)
+
+  // Explicit include_non_tmux: true succeeds
+  const peersAll = await host.tool('link_peers', { include_non_tmux: true })
+  assert.match(peersAll.text, /loose-worker/)
+  const tellOk = await host.tool('link_tell', { to: 'loose-worker', text: 'explicit ask', include_non_tmux: true })
+  assert.equal(tellOk.isError, false)
+  assert.match(tellOk.text, /Sent to loose-worker/)
+  const assignOk = await host.tool('link_assign', { worker: 'loose-worker', task: 'explicit task', include_non_tmux: true })
+  assert.equal(assignOk.isError, false)
+  assert.match(assignOk.text, /loose-worker/)
+
+  for (const s of [host, tmuxWorker, looseWorker]) s.stop()
+})
+
+test('tmux-reap.sh kills SIGHUP-ignoring descendant processes by root PID without touching bystanders', async () => {
+  const { spawnSync } = await import('node:child_process')
+  const reaper = new URL('./tmux-reap.sh', import.meta.url).pathname
+  const target = spawn('sh', ['-c', 'trap "" HUP; sleep 60'], { stdio: 'ignore' })
+  const innocent = spawn('sh', ['-c', 'sleep 60'], { stdio: 'ignore' })
+  const exited = new Promise(res => target.once('exit', () => res(true)))
+  await new Promise(r => setTimeout(r, 150))
+  const r = spawnSync('bash', [reaper, 'pid', String(target.pid)], { encoding: 'utf8' })
+  assert.equal(r.status, 0)
+  const reaped = await Promise.race([exited, new Promise(res => setTimeout(() => res(false), 1500))])
+  assert.equal(reaped, true, 'target SIGHUP-ignoring process should be reaped')
+  const innocentAlive = (() => {
+    try { process.kill(innocent.pid, 0); return innocent.exitCode === null } catch { return false }
+  })()
+  assert.equal(innocentAlive, true, 'unrelated bystander process must remain alive')
+  innocent.kill('SIGKILL')
 })

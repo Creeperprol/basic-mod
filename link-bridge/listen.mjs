@@ -9,14 +9,14 @@
 //   node listen.mjs install     add the hooks to ~/.claude/settings.json (user scope)
 //   node listen.mjs uninstall   remove them
 //
-// Env: LINK_HOME (default ~/.session-link).
+// Env: LINK_HOME (default ~/.ai-link).
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { ancestors } from './proc.mjs'
 
-const HOME = process.env.LINK_HOME || path.join(os.homedir(), '.session-link')
+const HOME = process.env.LINK_HOME || path.join(os.homedir(), '.ai-link')
 const STALE_MS = 60_000
 const TYPED_GRACE_MS = 5_000 // a session that can be typed into gets this long for typing before the hook takes over
 const dir = (...p) => path.join(HOME, ...p)

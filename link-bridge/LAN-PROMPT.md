@@ -1,6 +1,6 @@
 # Prompt: join another computer's AI Link over Wi-Fi
 
-Paste the prompt below into Claude Code on the **second** computer (same Wi-Fi as the first). Replace `<KEY>` with the key the first computer printed for `node lan.mjs key` (it is in `~/.session-link/lan.key` there). Never commit or post the key: anyone with it on your network can type into your sessions.
+Paste the prompt below into Claude Code on the **second** computer (same Wi-Fi as the first). Replace `<KEY>` with the key the first computer printed for `node lan.mjs key` (it is in `~/.ai-link/lan.key` there). Never commit or post the key: anyone with it on your network can type into your sessions.
 
 On the first computer, `lan.mjs` must already be running (`cd link-bridge && node lan.mjs`).
 
@@ -20,7 +20,7 @@ Set up AI Link on this computer so my Claude Code sessions here can talk to the 
    cd ~/ai-link/link-bridge && node lan.mjs
    (on macOS: osascript -e 'tell application "Terminal" to do script "cd ~/ai-link/link-bridge && node lan.mjs"').
    It should print "link lan: <machine> on UDP 47811 / HTTP 47812".
-7. Wait about 5 seconds, then list ~/.session-link/peers/*.json and tell me whether any entry has "remote": true (a session on the other computer). If none does, the Wi-Fi may block broadcast: ask me for the other computer's IP address (`ipconfig getifaddr en0` there), stop the lan.mjs window, and start it again as
+7. Wait about 5 seconds, then list ~/.ai-link/peers/*.json and tell me whether any entry has "remote": true (a session on the other computer). If none does, the Wi-Fi may block broadcast: ask me for the other computer's IP address (`ipconfig getifaddr en0` there), stop the lan.mjs window, and start it again as
    LINK_LAN_PEERS=<that IP> node lan.mjs
 8. Tell me to open a new Claude Code session (with listen.mjs installed any terminal works, Windows Terminal too; this session started before the MCP server was added, so it does not have the link tools). In that new session, link_peers lists the other computer's sessions as "... on <machine>".
 

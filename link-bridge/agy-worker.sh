@@ -55,7 +55,7 @@ if ! trusted; then
   exit 3
 fi
 
-PROMPT="You are a worker in a multi-agent setup. Tasks arrive typed into your prompt as [link TASK <id> ...] lines. Do not poll or wait. When a TASK arrives, do exactly what it says, then call link_report with that task_id and a short result (what you did, what you verified, what you did not). Write no chat text. ${EXTRA}"
+PROMPT="You are a worker in a multi-agent setup. Tasks arrive typed into your prompt as [link TASK <id> ...] lines. Do not poll or wait. When a TASK arrives, do exactly what it says, then call link_report with that task_id and a short result (what you did, what you verified, what you did not). If a command fails or something is wrong, do not guess or retry in a loop—immediately call link_report with the failing command and error output and stop. Write no chat text. ${EXTRA}"
 
 q() { printf "'%s'" "${1//\'/\'\\\'\'}"; }
 CMD="cd $(q "$DIR") && agy --dangerously-skip-permissions --model $MODEL -i $(q "$PROMPT")"

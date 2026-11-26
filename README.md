@@ -49,6 +49,7 @@ status_line = ["model-with-reasoning", "thread-name", "context-used", "five-hour
 
 ## Versions
 
+- **ai-link 1.10.0** — `link-bridge/cloud-agent.mjs` syncs this Mac's sessions to a Cloudflare Worker relay (the AI Remote app's `ai-remote/cloud` in the ai-link repo) so a phone can reach them from anywhere; link-bridge synced with ai-link (picker, tmux scripts); the picker selects the tmux window instead of swapping panes when the target is in another window of the same session.
 - **ai-link 1.9.0** — `link-bridge/claude-worker.sh|ps1` lets agy and Codex open a visible Claude window as a worker; new `share` skill (`ai-link/skills/share`, installable into agy and Codex with `link-bridge/install-skill.sh share`).
 - **ai-link 1.8.0** — no headless workers: `agy-worker` and `codex-agent` always open a window; `agy-image.sh` removed.
 - **ai-link 1.7.1** — link-bridge: fixed the Windows SendKeys escape regex and agy trust path matching; Windows scripts checked under PowerShell 7.

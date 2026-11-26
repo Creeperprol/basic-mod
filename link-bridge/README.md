@@ -4,7 +4,7 @@ The cross-CLI half of AI Link: works with any MCP-capable CLI. The Claude Code h
 
 A tiny MCP server (no dependencies, Node 18+) that lets coding-agent sessions on one machine — Claude Code, Codex, Qwen Code, anything that speaks MCP — find and message each other, and lets one session host and hand out work.
 
-State is plain files under `~/.session-link` (override with `LINK_HOME`). Nothing leaves the machine.
+State is plain files under `~/.ai-link` (override with `LINK_HOME`). Nothing leaves the machine.
 
 ## Tools
 
@@ -45,6 +45,14 @@ Codex asks before each MCP call; for hands-off use add `default_tools_approval_m
 
 **Fallback.** Without a terminal the old way applies: a worker is told to "wait for work with link_inbox (wait_seconds 100), do any task, then call link_report". Inside Claude Code the separate `ai-link` plugin also does push delivery between Claude sessions.
 
+## Left-side session picker (`picker.sh`, `link-workspace.sh`, `picker.mjs`)
+
+An interactive left-side session picker for all running **Claude**, **Codex**, and **agy** sessions (combining `~/.ai-link/peers`, tmux panes, and open Terminal windows):
+
+- **Standalone left-edge sidebar** (`./picker.sh`): opens a narrow Terminal.app window pinned to the left edge of your screen (`-w 310` pixels, or `--inline` in the current terminal). Click any session or use `↑`/`↓` + `Enter` or `1`–`9` to raise its Terminal tab or tmux pane; press `c`, `x`, or `a` to open a new Claude, Codex, or agy window.
+- **Tmux workspace with persistent left sidebar** (`./link-workspace.sh -a`): opens a tmux session (`ai-link`) with the picker pinned in the left pane (`-w 32` cols) and Claude, Codex, and agy sessions ready on the right. Clicking or picking any session on the left swaps it into the right-hand main pane while keeping the left sidebar visible.
+- **Scripting**: `node picker.mjs --list`, `--json`, or `--focus <name>`.
+
 ## Up to 8 workers in one window (`link-grid.sh`)
 
 `./link-grid.sh -d <trusted folder> -n 8 -m mix` opens one tmux session split into up to 8 tiled panes, alternating Codex (approval and sandbox bypassed) and agy (permissions skipped) (`-m codex` or `-m agy` for one kind). Workers appear in `link_peers` as `codex-1`, `agy-2`, ... with their pane, so `link_assign` types the task straight into the pane. `-a` attaches; `tmux kill-session -t link-grid` stops them all. Needs `tmux`. Verified with 8 panes: all 8 registered, and a message typed into `codex-1` and `agy-2` arrived (Codex answered; agy asked for permission before replying).
@@ -64,7 +72,7 @@ Setting up the second computer by hand is optional: paste the prompt in [`LAN-PR
 Sessions on the other machine then show up in `link_peers` as `name [cli] folder on <machine>`, and `link_tell`, `link_tellall`, `link_assign`, `link_report` and `link_rename` work across machines. A message from another machine is typed into the target session's own window like a local one, tagged with the sender's machine (`[link MESSAGE from "boss@Pauls-MacBook-Air"] ...`). Each machine keeps its own host: a host can hand tasks to workers on other machines, and the result marks the task done on its board.
 
 - **How it works.** Every 3 s each machine broadcasts its live sessions over UDP (port 47811). Messages for a session on another machine are carried over HTTP (port 47812) and dropped into that session's inbox. The MCP server itself still never touches the network.
-- **Security.** Every packet is signed with the shared key (HMAC-SHA256), carries a timestamp and a one-time nonce, and anything unsigned, stale or replayed is refused. The key is in `~/.session-link/lan.key` (mode 600). Anyone with the key can type into your sessions, so share it only between your own machines, and do not run `lan.mjs` on a network you do not trust (traffic is signed, not encrypted).
+- **Security.** Every packet is signed with the shared key (HMAC-SHA256), carries a timestamp and a one-time nonce, and anything unsigned, stale or replayed is refused. The key is in `~/.ai-link/lan.key` (mode 600). Anyone with the key can type into your sessions, so share it only between your own machines, and do not run `lan.mjs` on a network you do not trust (traffic is signed, not encrypted).
 - **No broadcast?** Some Wi-Fi networks (guest, hotel, "client isolation") block it. Name the other machines directly: `LINK_LAN_PEERS=192.168.0.124 node lan.mjs` (comma-separated, `ip:udpPort` for a different port). Find a Mac's address with `ipconfig getifaddr en0`.
 - **Firewall.** If the macOS firewall is on, allow incoming connections for `node` when asked.
 - **Options.** `LINK_LAN_KEY` (instead of the key file), `LINK_LAN_UDP`, `LINK_LAN_HTTP`, `LINK_LAN_BROADCAST=0` (only `LINK_LAN_PEERS`).
