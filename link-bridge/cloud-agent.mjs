@@ -6,6 +6,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { execFile } from 'node:child_process'
+import { chatText, chunkText } from './chat.mjs'
 
 const HOME = path.join(os.homedir(), '.ai-link')
 const cfg = JSON.parse(fs.readFileSync(process.env.LINK_CLOUD_CONFIG || path.join(HOME, 'cloud.json'), 'utf8'))
@@ -35,7 +36,7 @@ const localPeers = () => {
     if (!p || p.remote || !p.id || !p.pid || !alive(p.pid)) continue
     out.push({
       id: p.id, name: p.name || p.id.slice(0, 8), cli: p.cli || 'claude', cwd: p.cwd || '',
-      remote: false, machine: MACHINE, pane: p.pane || '', tty: p.tty || '',
+      remote: false, machine: MACHINE, pane: p.pane || '', tty: p.tty || '', cliPid: Array.isArray(p.chain) ? p.chain[0] : 0,
       isHost: !!host && host.id === p.id, seen: p.seen || Date.now(),
       watchdog: wdFresh[p.id] || null,
     })
@@ -91,9 +92,23 @@ const handle = async (cmd, peers) => {
   }
 }
 
+// Chat view: the app watches "<session id>-chat-last" or "<session id>-chat-<n>" and gets that piece of the whole
+// conversation (pieces of <= 19000 chars counted from the start, so older ones never change), headed "#chat <n>/<total>".
+const CHAT_ID = /^(.+)-chat-(last|\d+)$/
 const capture = async (peers, ids) => {
   const panes = {}
+  const chats = new Map() // one read per session per sync, however many pieces are watched
   for (const id of ids) {
+    const cm = id.match(CHAT_ID)
+    if (cm) {
+      const p = peers.find(x => x.id === cm[1])
+      if (!p) continue
+      if (!chats.has(p.id)) chats.set(p.id, chunkText(await chatText({ cli: p.cli, pid: p.cliPid, pane: p.pane })))
+      const chunks = chats.get(p.id)
+      const n = cm[2] === 'last' ? chunks.length - 1 : Math.min(Number(cm[2]), chunks.length - 1)
+      panes[id] = `#chat ${n}/${chunks.length}\n${chunks[n]}`
+      continue
+    }
     const p = peers.find(x => x.id === id)
     if (!p) continue
     const out = p.pane ? await run('tmux', ['capture-pane', '-p', '-e', '-t', p.pane, '-S', '-200']) : null
@@ -113,7 +128,7 @@ for (;;) {
     const res = await fetch(`${BASE}/agent/sync`, {
       method: 'POST',
       headers: { authorization: `Bearer ${cfg.key}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ machine: MACHINE, mid: MID, peers: peers.map(({ tty, ...rest }) => rest), panes: await capture(peers, watch) }),
+      body: JSON.stringify({ machine: MACHINE, mid: MID, peers: peers.map(({ tty, cliPid, ...rest }) => rest), panes: await capture(peers, watch) }),
       signal: AbortSignal.timeout(10000),
     })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)

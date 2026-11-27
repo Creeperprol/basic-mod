@@ -74,9 +74,9 @@ Grid workers run with their approval and sandbox bypass flags, so only point the
 
 1. On the Mac, keep the cloud agent running: `node link-bridge/cloud-agent.mjs` (needs `~/.ai-link/cloud.json` with the relay `url` and `key`).
 2. In **AI Remote**, set the server URL and key in Settings, tap the pairing link `ailink://pair?url=<relay url>&key=<key>`, or build the app with `ai-remote/AILinkRemote/Local.xcconfig` (the app lives in the [ai-link repo](https://github.com/Creeperprol/ai-link); see its `ai-remote/README.md`).
-3. Tap a session to see its pane live, in colour, with Enter / y / arrow / Esc / Ctrl-C buttons and a text box.
+3. Tap a session. **Chat** shows the whole conversation, read on the Mac from Claude Code's transcript, the Codex session file, or the pane's full tmux history (agy and others); tap **Earlier messages** at the top for older parts. **Terminal** shows the live pane in colour. Both have Enter / y / arrow / Esc / Ctrl-C buttons and a text box.
 
-Only sessions with a tmux pane have a live view; others say "No tmux pane for this session".
+Only sessions with a tmux pane have a live Terminal view; others say "No tmux pane for this session". Claude Code and Codex draw in the alternate screen, which has no tmux scrollback, so use Chat to read back.
 
 ## 7. Stop sessions
 

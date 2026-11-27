@@ -53,6 +53,7 @@ status_line = ["model-with-reasoning", "thread-name", "context-used", "five-hour
 
 ## Versions
 
+- **ai-link 1.13.0** — `link-bridge/chat.mjs` + `cloud-agent.mjs` send the AI Remote app a session's whole conversation (Claude Code transcript, Codex session file, or full tmux history) in pieces, for the app's new Chat view; Claude Code and Codex panes have no tmux scrollback, so the Terminal view alone showed only the current screen.
 - **ai-link 1.12.0** — every session's current model: `link_peers` lists `[cli, model]` (e.g. `agy-1  [agy, Gemini 4 Hydrogen (High)]`) and tells each AI its own, and the picker sidebar shows it; read by `link-bridge/model.mjs` from what each CLI records (Claude Code transcript, agy log, Codex footer).
 - **ai-link 1.11.3** — picker sidebar buttons ([x], split, resize, zoom) act on the pane last clicked in tmux, and the highlight follows it; `link-bridge/tmux-drag-end.sh` with the `TMUX.md` bindings makes a mouse selection copy and clear wherever it is released, even over Claude Code and Codex panes.
 - **ai-link 1.11.3** — picker sidebar buttons ([x], split, resize, zoom) act on the pane last clicked in tmux, and the highlight follows it; `link-bridge/tmux-drag-end.sh` with the `TMUX.md` bindings makes a mouse selection copy and clear wherever it is released, even over Claude Code and Codex panes.

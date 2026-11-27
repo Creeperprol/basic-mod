@@ -478,6 +478,36 @@ test('model.mjs reads each CLI\'s current model from what it records', async () 
   assert.equal(m.agyLogForStart(['cli-20261127_095307.log'], start), '')
 })
 
+test('chat.mjs turns Claude and Codex transcripts into a readable chat and splits it into stable pieces', async () => {
+  const c = await import('./chat.mjs')
+  const claude = [
+    { type: 'user', message: { content: 'fix the picker' } },
+    { type: 'user', isMeta: true, message: { content: 'hidden reminder' } },
+    { type: 'user', message: { content: '<command-name>/model</command-name>' } },
+    { type: 'assistant', message: { content: [{ type: 'text', text: 'Looking at it.' }, { type: 'tool_use', name: 'Bash', input: { command: 'ls -la' } }] } },
+    { type: 'user', message: { content: [{ type: 'tool_result', content: 'files' }] } },
+    { type: 'assistant', message: { content: [{ type: 'text', text: 'Done.' }] } },
+  ].map(x => JSON.stringify(x)).join('\n')
+  assert.equal(c.renderClaudeTranscript(claude), '❯ fix the picker\n\n⏺ Looking at it.\n\n⏺ Bash(ls -la)\n\n⏺ Done.')
+  const codex = [
+    { type: 'session_meta', payload: { id: 'x' } },
+    { type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: '<environment_context>...' }] } },
+    { type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'hi' }] } },
+    { type: 'response_item', payload: { type: 'function_call', name: 'shell', arguments: JSON.stringify({ cmd: ['ls', '-la'] }) } },
+    { type: 'response_item', payload: { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'Hello!' }] } },
+  ].map(x => JSON.stringify(x)).join('\n')
+  assert.equal(c.renderCodexRollout(codex), '❯ hi\n\n⏺ shell(ls -la)\n\n⏺ Hello!')
+  const text = Array.from({ length: 100 }, (_, i) => `line ${i} ${'x'.repeat(40)}`).join('\n')
+  const pieces = c.chunkText(text, 500)
+  assert.ok(pieces.every(p => p.length <= 500))
+  assert.equal(pieces.join('\n'), text)
+  // Growing the chat changes only the last piece.
+  const grown = c.chunkText(text + '\nmore', 500)
+  assert.deepEqual(grown.slice(0, pieces.length - 1), pieces.slice(0, -1))
+  assert.deepEqual(c.chunkText('', 500), [''])
+  assert.ok(c.chunkText('y'.repeat(1200), 500).every(p => p.length <= 500))
+})
+
 test('picker.sh and link-workspace.sh validate arguments and build commands in dry-run mode', async () => {
   const { spawnSync } = await import('node:child_process')
   const pickerSh = new URL('./picker.sh', import.meta.url).pathname
