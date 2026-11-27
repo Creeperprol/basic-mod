@@ -92,4 +92,25 @@ link-bridge/tmux-reap.sh sweep     # unattached @autokill sessions and children 
 | Old, closed sessions still listed | Their process is gone but the file stayed in `~/.ai-link/peers/`. Delete the files whose `pid` is no longer running (`kill -0 <pid>` fails). |
 | `link_peers` does not list a session | By default only tmux sessions are used; start it inside tmux, or pass `include_non_tmux: true`. |
 | Messages arrive but are not typed in | The target is not in tmux or Terminal.app (iTerm2 is not supported); it reads them from `link_inbox` instead. |
+| A mouse-drag highlight stays after you let go | Claude Code and Codex take the mouse and keep their own highlight, and tmux only clears a selection released inside the pane it started in. Add the block below to `~/.tmux.conf` and run `tmux source ~/.tmux.conf`. |
 | `sessions should be nested with care` | You ran `tmux` inside tmux. Use `Ctrl-b c` for a new window instead, or `tmux switch -t <name>`. |
+
+### Mouse selection like a normal terminal
+
+Every drag becomes a tmux selection, even over Claude Code and Codex. Releasing it anywhere (the same pane, another pane, a border, the status line) copies it to the clipboard and clears the highlight, and a click clears one left behind. `link-bridge/tmux-drag-end.sh` does the copy and clear for the pane the drag started in; set `TMUX_COPY_CMD` for a clipboard other than `pbcopy` (e.g. `wl-copy`).
+
+```tmux
+set -g mouse on
+DRAG_END="$HOME/path/to/ai-link/link-bridge/tmux-drag-end.sh"
+bind-key -n MouseDrag1Pane set -gF @drag_pane '#{pane_id}' \; if-shell -F '#{pane_in_mode}' 'send-keys -M' 'copy-mode -M'
+bind-key -T copy-mode    MouseDrag1Pane set -gF @drag_pane '#{pane_id}' \; select-pane \; send-keys -X begin-selection
+bind-key -T copy-mode-vi MouseDrag1Pane set -gF @drag_pane '#{pane_id}' \; select-pane \; send-keys -X begin-selection
+bind-key -T copy-mode    MouseDragEnd1Pane run-shell -b "$DRAG_END"
+bind-key -T copy-mode-vi MouseDragEnd1Pane run-shell -b "$DRAG_END"
+bind-key -n MouseDragEnd1Pane   run-shell -b "$DRAG_END"
+bind-key -n MouseDragEnd1Border run-shell -b "$DRAG_END"
+bind-key -n MouseDragEnd1Status run-shell -b "$DRAG_END"
+bind-key -n MouseDown1Pane run-shell -b -t = "$DRAG_END '#{pane_id}'" \; select-pane -t = \; send-keys -M
+bind-key -T copy-mode    MouseDown1Pane select-pane \; send-keys -X clear-selection
+bind-key -T copy-mode-vi MouseDown1Pane select-pane \; send-keys -X clear-selection
+```

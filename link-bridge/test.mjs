@@ -444,6 +444,16 @@ test('picker.mjs never labels a tmux pane with a version-number window name (Cla
   assert.equal(name('%3'), 'designer')
 })
 
+test('picker sidebar buttons act on the pane last clicked in tmux, never the sidebar or the bottom pane', async () => {
+  const { focusedPaneFrom } = await import('./picker.mjs')
+  // Clicked the top-right pane %9, then the sidebar %1 (now active): %9 is the window's last pane.
+  assert.equal(focusedPaneFrom('%1\t1\t0\n%0\t0\t0\n%9\t0\t1\n%30\t0\t0\n', '%1'), '%9')
+  // Clicked a pane and the picker refreshed before the sidebar was clicked: the active pane wins.
+  assert.equal(focusedPaneFrom('%1\t0\t1\n%9\t1\t0\n%30\t0\t0\n', '%1'), '%9')
+  // Nothing but the sidebar: no target.
+  assert.equal(focusedPaneFrom('%1\t1\t0\n', '%1'), '')
+})
+
 test('picker.sh and link-workspace.sh validate arguments and build commands in dry-run mode', async () => {
   const { spawnSync } = await import('node:child_process')
   const pickerSh = new URL('./picker.sh', import.meta.url).pathname

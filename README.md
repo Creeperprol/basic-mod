@@ -53,6 +53,7 @@ status_line = ["model-with-reasoning", "thread-name", "context-used", "five-hour
 
 ## Versions
 
+- **ai-link 1.11.3** — picker sidebar buttons ([x], split, resize, zoom) act on the pane last clicked in tmux, and the highlight follows it; `link-bridge/tmux-drag-end.sh` with the `TMUX.md` bindings makes a mouse selection copy and clear wherever it is released, even over Claude Code and Codex panes.
 - **ai-link 1.11.2** — `PICKER.md` guide; the picker no longer lists another picker's sidebar pane as a session, never labels a pane with Claude Code's version-number window name, and recognises unregistered agy panes (`agy-real`).
 - **ai-link 1.11.1** — `TMUX.md`: how to use tmux with AI Link (install, keys, workspaces, phone remote, stopping sessions, troubleshooting).
 - **ai-link 1.11.0** — `link-bridge/cloud-agent.mjs` sends tmux panes with their colours (`capture-pane -e`) for the AI Remote app's coloured terminal, trimmed on a line break so the relay never splits a colour code.

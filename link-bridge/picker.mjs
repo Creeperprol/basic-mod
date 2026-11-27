@@ -1007,6 +1007,14 @@ async function attachOrFocusTmuxSession(targetSession) {
   }
 }
 
+// The pane the person last clicked in the sidebar's tmux window, from
+// `list-panes -F '#{pane_id}\t#{pane_active}\t#{pane_last}'`. Clicking the sidebar makes it the active
+// pane and the clicked pane the window's last pane, so: the active pane unless it is the sidebar, else the last one.
+export function focusedPaneFrom(listPanesOut, selfPane) {
+  const rows = String(listPanesOut || '').split('\n').map(l => l.trim().split('\t')).filter(r => r[0] && r[0] !== selfPane)
+  return (rows.find(r => r[1] === '1') || rows.find(r => r[2] === '1') || [''])[0]
+}
+
 // Performs tmux window/pane management actions: new-window, split-h, split-v, resize-*, zoom, rename, kill.
 export async function tmuxControlAction(action, item = null, opts = {}) {
   const dir = (item?.cwd && fs.existsSync(item.cwd)) ? item.cwd : (opts.dir || process.cwd())
@@ -1664,6 +1672,24 @@ async function main() {
   let renameMode = false
   let renameBuf = ''
   let busy = false
+  // Sidebar mode: the pane last clicked in tmux, which the buttons act on until the person picks a row with the keys.
+  let followPane = ''
+  let seenFocus = ''
+
+  const observeFocus = async () => {
+    if (!tmuxSidebar || !selfPane) return
+    const r = await run('tmux', ['list-panes', '-t', selfPane, '-F', '#{pane_id}\t#{pane_active}\t#{pane_last}'])
+    if (!r.ok) return
+    const ids = r.stdout.split('\n').map(l => l.split('\t')[0].trim()).filter(Boolean)
+    if (followPane && !ids.includes(followPane)) followPane = ''
+    const focused = focusedPaneFrom(r.stdout, selfPane)
+    if (focused && focused !== seenFocus) {
+      seenFocus = focused
+      followPane = focused
+      const i = state.flat.findIndex(x => x.pane === focused)
+      if (i >= 0) selectedIndex = i
+    }
+  }
 
   const draw = () => {
     const cols = process.stdout.columns || 120
@@ -1685,7 +1711,10 @@ async function main() {
   }
 
   const runTmuxAction = async (action, extra = {}) => {
-    const item = state.flat[selectedIndex] || null
+    await observeFocus()
+    const item = followPane
+      ? (state.flat.find(i => i.pane === followPane) || { pane: followPane, tmuxSession, name: followPane, cwd: '' })
+      : (state.flat[selectedIndex] || null)
     if (action === 'rename' && !extra.newName) {
       renameMode = true
       renameBuf = item?.tmuxSession ? (item.name || '') : ''
@@ -1695,6 +1724,7 @@ async function main() {
     status = `tmux: ${action}…`
     draw()
     const res = await tmuxControlAction(action, item, { tmuxSidebar, tmuxSession, selfPane, dir, ...extra })
+    if (action === 'kill' && res.ok) followPane = ''
     status = res.message
     await refresh()
   }
@@ -1712,12 +1742,14 @@ async function main() {
     const nextCol = (curCol + delta + nonEmpty.length) % nonEmpty.length
     const targetEntries = nonEmpty[nextCol].entries
     selectedIndex = targetEntries[Math.min(curRow, targetEntries.length - 1)].idx
+    followPane = ''
     status = ''
     draw()
   }
 
   const moveRow = delta => {
     if (!state.flat.length) return
+    followPane = ''
     if (tableColumns.length > 0) {
       const col = tableColumns.find(c => c.entries.some(e => e.idx === selectedIndex))
       if (col && col.entries.length > 0) {
@@ -1746,6 +1778,7 @@ async function main() {
       } else {
         selectedIndex = Math.min(selectedIndex, Math.max(0, state.flat.length - 1))
       }
+      await observeFocus()
       draw()
     } finally {
       busy = false
@@ -1756,6 +1789,8 @@ async function main() {
     const item = state.flat[idx]
     if (!item) return
     selectedIndex = idx
+    followPane = ''
+    if (item.pane) seenFocus = item.pane
     const useTmux = Boolean(extraOpts.inTmux ?? inTmux)
     status = item.isPast
       ? `Resuming ${item.name}${useTmux ? ' in tmux' : ''}…`
