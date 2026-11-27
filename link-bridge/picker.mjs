@@ -421,7 +421,8 @@ export async function probeSystem() {
     const [, pidStr, ppidStr, ttyRaw, etimeStr, commRaw, argsRaw = ''] = m
     const pid = Number(pidStr)
     const tty = ttyRaw === '??' || ttyRaw === '-' ? '' : ttyRaw.replace(/^\/dev\//, '')
-    const comm = path.basename(commRaw).toLowerCase()
+    // agy runs as agy-real behind its wrapper; count it as agy.
+    const comm = path.basename(commRaw).toLowerCase().replace(/-real$/, '')
     etimes.set(pid, parseEtime(etimeStr))
     kids.set(ppidStr, [...(kids.get(ppidStr) || []), pidStr])
     procInfo.set(pidStr, { pid, tty, comm, args: argsRaw })
@@ -459,6 +460,8 @@ export async function probeSystem() {
       const todo = [panePid]
       let detectedCli = ''
       let detectedPid = 0
+      // Another picker's sidebar pane is a controller, not a session: never list it.
+      if (/\bpicker\.mjs\b/.test(procInfo.get(panePid)?.args || '')) continue
       for (let i = 0; i < todo.length && i < 200; i++) {
         const cur = todo[i]
         const info = procInfo.get(cur)
@@ -469,7 +472,7 @@ export async function probeSystem() {
             break
           }
           // Check argv[1] for node-wrapped CLIs (e.g. node .../codex or node .../agy)
-          const toks = info.args.split(/\s+/).slice(0, 3).map(t => path.basename(t).toLowerCase())
+          const toks = info.args.split(/\s+/).slice(0, 3).map(t => path.basename(t).toLowerCase().replace(/-real$/, ''))
           const hit = toks.find(t => AI_CLIS.has(t))
           if (hit) {
             detectedCli = hit
@@ -611,10 +614,13 @@ export function buildSessionGroups({
     if (claimedTmuxPanes.has(tp.pane)) continue
     if (selfPane && tp.pane === selfPane) continue
     const isGenericTmux = tp.cli === 'tmux'
+    // tmux names a window after its running program; Claude Code's binary is its version (e.g. 2.1.332),
+    // and a shell name says nothing, so neither is used as a label.
+    const winName = tp.windowName && !/^\d+(\.\d+)+$/.test(tp.windowName) ? tp.windowName : ''
     const label = isGenericTmux
-      ? `${tp.session}:${tp.windowIndex}${tp.windowName ? ' ' + tp.windowName : ''}`
-      : (tp.windowName && !['zsh', 'bash', 'sh', 'fish'].includes(tp.windowName)
-        ? tp.windowName
+      ? `${tp.session}:${tp.windowIndex}${winName ? ' ' + winName : ''}`
+      : (winName && !['zsh', 'bash', 'sh', 'fish'].includes(winName)
+        ? winName
         : `${tp.cli}-${tp.pane.replace('%', '')}`)
     items.push({
       id: `tmux-${tp.pane}`,

@@ -430,6 +430,20 @@ test('picker.mjs merges Claude, Codex and agy sessions from bridge, tmux and pro
   assert.match(fs.readFileSync(logFile, 'utf8'), /claude-host/)
 })
 
+test('picker.mjs never labels a tmux pane with a version-number window name (Claude Code renames its window to e.g. 2.1.332)', async () => {
+  const { buildSessionGroups } = await import('./picker.mjs')
+  const now = 10_000
+  const pane = (cli, windowName, id) => ({ cli, pid: 900 + Number(id), session: 'work', windowIndex: Number(id), windowName, pane: `%${id}`, cwd: '/w', paneActive: false, windowActive: false, tty: `ttys9${id}` })
+  const { flat } = buildSessionGroups({
+    now,
+    tmuxPanes: [pane('claude', '2.1.332', 1), pane('tmux', '2.1.332', 2), pane('agy', 'designer', 3)],
+  })
+  const name = p => flat.find(i => i.pane === p)?.name
+  assert.equal(name('%1'), 'claude-1')
+  assert.equal(name('%2'), 'work:2')
+  assert.equal(name('%3'), 'designer')
+})
+
 test('picker.sh and link-workspace.sh validate arguments and build commands in dry-run mode', async () => {
   const { spawnSync } = await import('node:child_process')
   const pickerSh = new URL('./picker.sh', import.meta.url).pathname
