@@ -3,6 +3,8 @@
 - `ai-link` (AI Link, formerly `session-link`): a Claude Code mod (a plugin of function hooks) with two side panes.
 - `link-bridge`: a small MCP server so Claude Code, Codex, Qwen Code and the Antigravity CLI (`agy`) sessions can message each other and hand out work (see `link-bridge/README.md`). It is the cross-CLI half of AI Link; the `ai-link` mod is the Claude Code half. One-shot helpers there let Claude use `agy` (`agy-worker.sh`) and Codex (`codex-agent.sh`, read-only by default) as agents; `link-grid.sh` and `big-grid.sh` open many workers in one tmux window, and messages are typed straight into their panes; `link_peers` also shows AI sessions in other panes of the same tmux window that have not joined; `lan.mjs` links sessions on other machines on the same Wi-Fi.
 
+**New to tmux?** [`TMUX.md`](TMUX.md) shows how to run your AI sessions in tmux so other sessions can type into them and the AI Remote phone app can show them live: install, keys, workspaces, phone setup, stopping sessions and troubleshooting.
+
 ## Install
 
 Not on a marketplace. Clone the repo and load the plugin folder:
@@ -49,6 +51,8 @@ status_line = ["model-with-reasoning", "thread-name", "context-used", "five-hour
 
 ## Versions
 
+- **ai-link 1.11.1** — `TMUX.md`: how to use tmux with AI Link (install, keys, workspaces, phone remote, stopping sessions, troubleshooting).
+- **ai-link 1.11.0** — `link-bridge/cloud-agent.mjs` sends tmux panes with their colours (`capture-pane -e`) for the AI Remote app's coloured terminal, trimmed on a line break so the relay never splits a colour code.
 - **ai-link 1.10.0** — `link-bridge/cloud-agent.mjs` syncs this Mac's sessions to a Cloudflare Worker relay (the AI Remote app's `ai-remote/cloud` in the ai-link repo) so a phone can reach them from anywhere; link-bridge synced with ai-link (picker, tmux scripts); the picker selects the tmux window instead of swapping panes when the target is in another window of the same session.
 - **ai-link 1.9.0** — `link-bridge/claude-worker.sh|ps1` lets agy and Codex open a visible Claude window as a worker; new `share` skill (`ai-link/skills/share`, installable into agy and Codex with `link-bridge/install-skill.sh share`).
 - **ai-link 1.8.0** — no headless workers: `agy-worker` and `codex-agent` always open a window; `agy-image.sh` removed.
