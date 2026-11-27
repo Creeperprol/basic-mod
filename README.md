@@ -53,6 +53,7 @@ status_line = ["model-with-reasoning", "thread-name", "context-used", "five-hour
 
 ## Versions
 
+- **ai-link 1.12.0** — every session's current model: `link_peers` lists `[cli, model]` (e.g. `agy-1  [agy, Gemini 4 Hydrogen (High)]`) and tells each AI its own, and the picker sidebar shows it; read by `link-bridge/model.mjs` from what each CLI records (Claude Code transcript, agy log, Codex footer).
 - **ai-link 1.11.3** — picker sidebar buttons ([x], split, resize, zoom) act on the pane last clicked in tmux, and the highlight follows it; `link-bridge/tmux-drag-end.sh` with the `TMUX.md` bindings makes a mouse selection copy and clear wherever it is released, even over Claude Code and Codex panes.
 - **ai-link 1.11.3** — picker sidebar buttons ([x], split, resize, zoom) act on the pane last clicked in tmux, and the highlight follows it; `link-bridge/tmux-drag-end.sh` with the `TMUX.md` bindings makes a mouse selection copy and clear wherever it is released, even over Claude Code and Codex panes.
 - **ai-link 1.11.2** — `PICKER.md` guide; the picker no longer lists another picker's sidebar pane as a session, never labels a pane with Claude Code's version-number window name, and recognises unregistered agy panes (`agy-real`).

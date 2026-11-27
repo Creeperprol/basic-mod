@@ -16,7 +16,7 @@ Other options: `-d DIR` (folder for new or continued sessions), `--live-only` (h
 
 ## 2. Read the list
 
-Sessions are grouped **CLAUDE**, **CODEX**, **AGY** and **TMUX** (tmux windows with no AI in them). Each row shows the name, folder and where it lives (`[ttys001]` for a Terminal tab, `[tmux:<session>:%3]` for a tmux pane).
+Sessions are grouped **CLAUDE**, **CODEX**, **AGY** and **TMUX** (tmux windows with no AI in them). Each row shows the name, the session's current **model** (e.g. `Opus 5.5`, `GPT-6-Luna high`, `Hydrogen High` for agy's *Gemini 4 Hydrogen (High)*; the folder when the model is unknown) and where it lives (`[ttys001]` for a Terminal tab, `[tmux:<session>:%3]` for a tmux pane).
 
 | Mark | Meaning |
 |---|---|

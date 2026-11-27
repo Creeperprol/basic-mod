@@ -9,6 +9,7 @@ import path from 'node:path'
 import crypto from 'node:crypto'
 import { execFile, execFileSync } from 'node:child_process'
 import { ancestors, windowPid, winType } from './proc.mjs'
+import { detectModel } from './model.mjs'
 
 const HOME = process.env.LINK_HOME || path.join(os.homedir(), '.ai-link')
 const CLI = process.env.LINK_CLI || 'agent'
@@ -305,7 +306,7 @@ const TOOLS = [
 const ok = text => ({ content: [{ type: 'text', text }] })
 const fail = text => ({ content: [{ type: 'text', text }], isError: true })
 
-const listWith = list => (list.length ? list.map(p => `${p.name}  [${p.cli}]  ${path.basename(p.cwd)}${p.pane ? `  tmux:${p.pane}` : ''}${p.remote ? `  on ${p.machine}` : ''}  (${p.id.slice(0, 8)})`).join('\n') : 'No tmux AI sessions running.')
+const listWith = (list, models = []) => (list.length ? list.map((p, i) => `${p.name}  [${p.cli}${models[i] ? `, ${models[i]}` : ''}]  ${path.basename(p.cwd)}${p.pane ? `  tmux:${p.pane}` : ''}${p.remote ? `  on ${p.machine}` : ''}  (${p.id.slice(0, 8)})`).join('\n') : 'No tmux AI sessions running.')
 
 // A required argument that is missing or empty is refused, so a model that misnames one ("message" for "text")
 // gets told and retries, instead of the other session receiving the word "undefined".
@@ -325,7 +326,12 @@ const call = async (name, a) => {
       const here = (await windowAis()).filter(w => !list.some(p => p.pane === w.pane))
       const extra = here.length ? `\nIn this tmux window, not linked yet: ${here.map(w => `${w.cli} (pane ${w.pane})`).join(', ')}. Ask the person to start link in them, or use link-grid.sh.` : ''
       const hiddenNote = hidden > 0 ? `\n(${hidden} non-tmux session(s) hidden; only tmux AIs are used unless the user asks — pass include_non_tmux: true if asked.)` : ''
-      return ok(`You are "${myName}" [${CLI}]${amHost() ? ' (host)' : ''}.${h && !amHost() ? ` Host: ${h.name}.` : ''}\n${listWith(list)}${extra}${hiddenNote}`)
+      // Each session's current model (read from what its CLI records; '' when it cannot tell, and for other machines).
+      const [mine, ...models] = await Promise.all([
+        detectModel({ cli: CLI, pid: myChain[0], pane: PANE }),
+        ...list.map(p => (p.remote ? '' : detectModel({ cli: p.cli, pid: p.chain?.[0], pane: p.pane }))),
+      ])
+      return ok(`You are "${myName}" [${CLI}${mine ? `, ${mine}` : ''}]${amHost() ? ' (host)' : ''}.${h && !amHost() ? ` Host: ${h.name}.` : ''}\n${listWith(list, models)}${extra}${hiddenNote}`)
     }
     case 'link_tell': {
       const includeNonTmux = Boolean(a.include_non_tmux)

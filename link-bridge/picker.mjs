@@ -16,6 +16,7 @@ import path from 'node:path'
 import { execFile, execFileSync, spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { winFocus } from './proc.mjs'
+import { detectModel, shortModel } from './model.mjs'
 
 const DEFAULT_HOME = process.env.LINK_HOME || path.join(os.homedir(), '.ai-link')
 const FRESH_MS = 60_000
@@ -387,6 +388,7 @@ export const readBridgePeers = (home = DEFAULT_HOME, now = Date.now()) => {
         cli: normalizeCli(p.cli),
         cwd: String(p.cwd || ''),
         pid: Number(p.pid || 0),
+        chain: Array.isArray(p.chain) ? p.chain.map(Number).filter(Boolean) : [],
         tty: String(p.tty || '').replace(/^\/dev\//, ''),
         pane: String(p.pane || ''),
         seen: Number(p.seen || now),
@@ -728,7 +730,16 @@ export async function discoverSessions({
   const { peers, hostId } = readBridgePeers(home, now)
   const { procWindows, tmuxPanes, etimes } = await probeSystem()
   const pastSessions = includePast ? readPastSessions({ claudeDir, codexDir, agyDir, limitPerCli }) : []
-  return buildSessionGroups({ bridgePeers: peers, hostId, procWindows, tmuxPanes, etimes, pastSessions, selfPane, selfTty, now })
+  const result = buildSessionGroups({ bridgePeers: peers, hostId, procWindows, tmuxPanes, etimes, pastSessions, selfPane, selfTty, now })
+  // Current model of each live session: the CLI process is the pane's AI process, else the bridge server's parent.
+  await Promise.all(result.flat.map(async item => {
+    if (item.isPast || item.remote || !['claude', 'codex', 'agy'].includes(item.cli)) return
+    const pid = (item.pane && tmuxPanes.find(t => t.pane === item.pane)?.pid)
+      || peers.find(p => p.id === item.id)?.chain?.[0]
+      || procWindows.find(w => w.tty && w.tty === item.tty)?.pid
+    item.model = await detectModel({ cli: item.cli, pid, pane: item.pane })
+  }))
+  return result
 }
 
 // Focuses / switches to a live session, or resumes a past session.
@@ -1512,7 +1523,9 @@ export function renderSidebar({ groups = [], selectedIndex = 0, width = 32, heig
             : item.tty
               ? item.tty.replace(/^ttys/, 't')
               : ago(now - item.seen)
-        const suffix = folder ? ` ${folder}` : ''
+        // A live session shows its model (e.g. "Hydrogen High", "Opus 5.5") where the folder would go.
+        const model = item.model ? shortModel(item.model) : ''
+        const suffix = model ? ` ${model}` : folder ? ` ${folder}` : ''
         const meta = rightTag ? ` ${rightTag}` : ''
         // Visual width of left gutter: "▶" + num + " " + dot + " " = 5 chars (or "│" + num + " " + dot + " " = 5 chars)
         const leftW = 5
@@ -1630,7 +1643,7 @@ async function main() {
             process.stdout.write(`  ↺ ${i.name}  ${folderBase(i.cwd)}  [resume:${i.sessionId.slice(0, 8)} · ${ago(now - i.seen)}]\n`)
           } else {
             const loc = i.pane ? `tmux:${i.tmuxSession}:${i.pane}` : i.tty || 'no-tty'
-            process.stdout.write(`  ${i.isHost ? '★ ' : '● '}${i.name}  ${folderBase(i.cwd)}  [${loc}]\n`)
+            process.stdout.write(`  ${i.isHost ? '★ ' : '● '}${i.name}  ${folderBase(i.cwd)}${i.model ? `  ${i.model}` : ''}  [${loc}]\n`)
           }
         }
       }

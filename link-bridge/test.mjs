@@ -454,6 +454,30 @@ test('picker sidebar buttons act on the pane last clicked in tmux, never the sid
   assert.equal(focusedPaneFrom('%1\t1\t0\n', '%1'), '')
 })
 
+test('model.mjs reads each CLI\'s current model from what it records', async () => {
+  const m = await import('./model.mjs')
+  assert.equal(m.prettyModel('claude-opus-5-5'), 'Opus 5.5')
+  assert.equal(m.prettyModel('claude-sonnet-5-5-20261001'), 'Sonnet 5.5')
+  assert.equal(m.prettyModel('claude-fable-5-2[1m]'), 'Fable 5.2 1M')
+  assert.equal(m.prettyModel('gpt-6'), 'gpt-6')
+  assert.equal(m.shortModel('Gemini 4 Hydrogen (High)'), 'Hydrogen High')
+  assert.equal(m.shortModel('Opus 5.5'), 'Opus 5.5')
+  const transcript = [
+    JSON.stringify({ message: { model: 'claude-sonnet-5-5' } }),
+    JSON.stringify({ message: { model: 'claude-opus-5-5' } }),
+    JSON.stringify({ message: { model: '<synthetic>' } }),
+    '{"partial',
+  ].join('\n')
+  assert.equal(m.modelFromTranscript(transcript), 'claude-opus-5-5')
+  const log = 'x selected model override to backend: label="Gemini 4 Hydrogen (High)"\ny selected model override to backend: label="Gemini 4 Flash (Low)"\n'
+  assert.equal(m.modelFromAgyLog(log), 'Gemini 4 Flash (Low)')
+  assert.equal(m.modelFromCodexScreen('  >_ OpenAI Codex (v0.172.0)\n› Ask Codex\n  GPT-6-Luna high · Context 0% used · mon…\n'), 'GPT-6-Luna high')
+  assert.equal(m.modelFromCodexScreen('no footer here'), '')
+  const start = new Date(2026, 10, 27, 9, 49, 10).getTime()
+  assert.equal(m.agyLogForStart(['cli-20261127_094815.log', 'cli-20261127_094910.log', 'cli-20261127_094911.log'], start), 'cli-20261127_094910.log')
+  assert.equal(m.agyLogForStart(['cli-20261127_095307.log'], start), '')
+})
+
 test('picker.sh and link-workspace.sh validate arguments and build commands in dry-run mode', async () => {
   const { spawnSync } = await import('node:child_process')
   const pickerSh = new URL('./picker.sh', import.meta.url).pathname

@@ -20,6 +20,8 @@ claude                   # or: codex, agy
 
 That is all AI Link needs: the session registers its tmux pane on start (`~/.ai-link/peers/<id>.json` has `"pane": "%0"`), so it shows up in `link_peers` and in the phone app.
 
+`link_peers` also tells every AI which model each session is running, and its own: `claude-4e40  [claude, Opus 5.5]`, `agy-1  [agy, Gemini 4 Hydrogen (High)]`, `codex-1  [codex, GPT-6-Luna high]`. It is read from what each CLI records (Claude Code's transcript, agy's log, the Codex footer), so a `/model` switch shows up once that CLI has recorded it (for Claude, after its next reply).
+
 Check from any other session:
 
 ```sh
