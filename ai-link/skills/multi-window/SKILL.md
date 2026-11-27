@@ -32,7 +32,7 @@ Two roles. Decide which one you are: the session the skill (or `/host`) made the
 **No headless AI (user rule, 2026-11-15).** Every worker the host starts must run in a window the user can see. Never start a background or print-mode AI: no headless `agy-worker.sh` (always pass `-w`), no `agy-image.sh` (it runs agy headless), no `codex-agent.sh` without `-w`, no `codex exec` / `claude -p` / `agy -p` run by hand. Claude workers come from `spawn` (a Terminal window), or from the tmux grid. If a helper has no window mode, use a windowed worker and `link_assign` the task instead. The Agent tool (in-process subagent) is still allowed where the playbook says so.
 
 1. **Contract first.** Before assigning anything write `CONTRACT.md` and a shared `config.js` (or equivalent): file ownership per worker, data shapes, exported function signatures, tick/call order, every number in one place.
-2. **Assign self-contained tasks** with the `assign` tool: name the files the worker may edit, the contract to read first, the exact "done when" check (a command that must pass), and append: "Work silently: no chat text, only tool calls, then one `report` call with a short result."
+2. **Assign self-contained tasks** with the `assign` tool: name the files the worker may edit, the contract to read first, the exact "done when" check (a command that must pass), and append: "First load the multi-window skill (read the WORKER mode section of ~/Projects/ai-link/skills/multi-window/SKILL.md; Claude workers use the Skill tool). Work silently: no chat text, your whole chat reply is only `.`, tool calls only, then one `report` call with a short result."
 3. **Never trust a report alone.** Re-run the tests yourself, run an end-to-end check, and look at real output (screenshots, tables) before telling the user it works. Workers often test only against mocks; say what was verified for real vs not.
 4. **Integrate with a diagnose-first loop.** When something is wrong, reproduce it with a script, find the cause, then send the owning worker a precise task with the repro and the target numbers. Do not edit a worker's files yourself while they may be editing them.
 5. **Only deploy or publish when the user asked**, after the checks pass; say plainly what was and was not verified.
@@ -98,6 +98,20 @@ Two roles. Decide which one you are: the session the skill (or `/host`) made the
 | light | Gemini via `agy` (`gemini-3.8-flash-low`) | small chores, and **making photos/images** (windowed agy worker: `agy-worker.sh -w`, then `link_assign` the image task) |
 | medium | `haiku` (Claude worker) **or** GPT via Codex (`codex-agent.sh -w`, read-only) | reading files, audits, greps, summaries, extraction, running tests, doc/consistency checks |
 | hard | `opus` or `sonnet` (Claude worker) | editing code and writing new code: multi-file edits against a contract, refactors, root-causing bugs, subtle correctness |
+
+**Model list for this machine (researched 2026-11-27): [`models.md`](models.md) in this skill folder.** It lists every model the user's Claude, Codex and agy CLIs can launch, with exact launch flags, effort values and Artificial Analysis price, speed and scores. Pick the model inside a tier from it. The user's tier rule above wins where they disagree. Key facts:
+- Fable 5.2 is NOT available on this account. Claude workers: `claude --model haiku|sonnet|opus --effort low|medium|high|xhigh|max`.
+- Codex has no model cheaper than `gpt-6-luna`; lower the effort to save: `codex -m gpt-6-luna -c model_reasoning_effort="medium"`. GPT-6-Luna scores 0-13% on Terminal-Bench 4.1, so give it reading and audits, never command-heavy work.
+- agy light chores: `agy --model gemini-4-hydrogen-low`. `gemini-3.8-flash-*` and Gemini 4 Argon are listed as ending 2026-11-30; after that, use Hydrogen Low wherever this skill says `gemini-3.8-flash-low`.
+- To change a tmux worker's model, use `tmux respawn-pane -k -t <pane> "<new command>"`. Do not press Ctrl-C: a pane that runs the CLI directly closes when the CLI exits. Start Codex panes about 12 s apart, because starting them together fails with "workspace routing discovery timed out".
+
+Clear a worker only when it moves to a different project that needs none of its old context. Do not clear it between tasks inside the same project. After its final report, send `/clear` to its pane (`tmux send-keys -t <pane> C-u`, then `-l '/clear'`, then `Enter`). Never clear a busy worker.
+
+**Host chat while workers run (user rule, 2026-11-27).** While any worker is still working, your whole chat reply is only `.` (also for a worker's acknowledgement or a partial report). When every worker has finished, verify, then give ONE summary. Workers always reply `.` in chat, never a summary, and every task you assign tells them to load this skill first.
+
+**Answer in as few words as possible (user rule, 2026-11-27).** When the person asks the host a question, reply with the fewest words that fully answer it: no recap, no preamble, no extra options. Workers follow the same rule in every report.
+
+**No workers yet (user rule, 2026-11-27).** Loading this skill with no worker windows still makes you the host. Never do the task yourself: after `peers` / `link_peers` shows none, use the worker count the person gave (ask once if they gave none), open exactly that many in tmux (`link-grid.sh` or tmux panes), wait for them to join, then assign.
 
 **Rank by quality and speed (2026-10-22).** Only part of this is measured on this machine; the rest is expectation from model class and must be re-checked with a real benchmark before relying on it.
 

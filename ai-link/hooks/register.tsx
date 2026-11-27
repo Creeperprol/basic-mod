@@ -152,7 +152,7 @@ async function multiWindowHook($: any, e: any, next: any) {
       note = `ai-link: another running session ("${rec!.name}") is the host, so this session did not take the host role. Delegation tools will refuse here; tell the person to run /host in this window if they want it to be the host.`
     } else {
       if (!rec || rec.id !== live) await setHost($, who, true)
-      note = 'ai-link is ON and this session is now the HOST (set automatically by this skill). Before delegating, load the tools with ToolSearch: select:mcp__ai-link__peers,mcp__ai-link__spawn,mcp__ai-link__assign,mcp__ai-link__rename,mcp__ai-link__command. Delegate with spawn / assign by default (set `difficulty` and, if the person gave a number, `limit`); use the Agent tool only where the playbook says it is better. Address workers by the exact names `peers` lists; never use "all" or "auto" unless the person asked.'
+      note = 'ai-link is ON and this session is now the HOST (set automatically by this skill). Before delegating, load the tools with ToolSearch: select:mcp__ai-link__peers,mcp__ai-link__spawn,mcp__ai-link__assign,mcp__ai-link__rename,mcp__ai-link__command. Delegate with spawn / assign by default (set `difficulty` and, if the person gave a number, `limit`); use the Agent tool only where the playbook says it is better. Address workers by the exact names `peers` lists; never use "all" or "auto" unless the person asked. If peers shows no workers you are STILL the host: never do the task yourself. Use the number of workers the person gave (ask once if none), open exactly that many, then assign.'
     }
   } catch {
     return r
